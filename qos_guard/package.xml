@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>check_qos</name>
+  <name>qos_guard</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Offline DDS QoS profile verification tool for Fast DDS</description>
   <maintainer email="csi@todo.todo">csi</maintainer>
   <license>TODO: License declaration</license>
 

@@ -13,56 +13,75 @@ By offering both conceptual insights and a practical tool, this work helps ROS 2
 
 ## 💡 How to run it from the terminal
 
-### Step-by-Step Guide
+This tool can be run either as a **ROS 2 package** or as a **standalone Python script**. No ROS 2 runtime is required—the code uses only standard Python libraries.
 
-## 🔧 Install
+### Arguments
 
-```bash
-# 1. Create a new ROS 2 workspace (if not created yet)
-mkdir -p ~/ros2_ws/src
-# 2. Move to the workspace source directory
-cd ~/ros2_ws/src
-# 3. Clone the QoS Guard repository
-git clone --branch QosGuard_v3 https://github.com/QosGuard-Anonymous/qos-guard.github.io.git
-# 4. Move back to workspace root and build the package
-cd ~/ros2_ws
-colcon build --packages-select check_qos
-# 5. Source the environment
-source install/setup.bash
-```
-
-## 🔧 How to Use
-
-Once installed, run the QoS constraint checker using:
-```bash
-ros2 run check_qos check_qos_cli pub.xml sub.xml publish_period=40ms rtt=50ms
-```
 - `pub.xml`: Writer QoS profile
 - `sub.xml`: Reader QoS profile
-- `publish_period`: Writer's message interval(PP)
-- `rtt`: Estimated round-trip time(RTT)
+- `publish_period`: Writer's message interval (PP), e.g. `40ms`
+- `rtt`: Estimated round-trip time (RTT), e.g. `50ms`
 
 > ⚠️ Ensure XML files follow standard Fast DDS QoS profile format.
+
+---
+
+## 🔧 Install & Run
+
+### Option A: ROS 2 패키지로 실행
+
+```bash
+# 1. Create a ROS 2 workspace (if needed)
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws/src
+
+# 2. Clone the repository
+git clone --branch QosGuard_v3 https://github.com/QosGuard-Anonymous/qos-guard.github.io.git
+
+# 3. Build the package
+cd ~/ros2_ws
+colcon build --packages-select qos_guard
+source install/setup.bash
+
+# 4. Run
+ros2 run qos_guard qos_guard pub.xml sub.xml publish_period=40ms rtt=50ms
+```
+
+### Option B: Python으로 직접 실행
+
+```bash
+# 1. Clone the repository
+git clone --branch QosGuard_v3 https://github.com/QosGuard-Anonymous/qos-guard.github.io.git
+cd qos-guard.github.io/qos_guard
+
+# 2. Run (Python 3.10+ required)
+python3 -m qos_guard.qos_checker test_xml/pub.xml test_xml/sub.xml publish_period=40ms rtt=50ms
+```
+
+ROS 2가 설치되어 있지 않아도 Python만 있으면 실행 가능합니다.
 
 ---
 
 ## 📂 Project Structure
 
 ```
-check_qos/
-├── check_qos/           
-│   ├── __pycache__
+qos_guard/
+├── qos_guard/                    # Python package
 │   ├── __init__.py
-│   └── qos_checker.py    # Main rule logic
-├── resource/           
-│   └── check_qos
+│   ├── cli.py                    # CLI 인자 파싱
+│   ├── xml_parser.py             # XML 파싱
+│   ├── rules.py                  # 규칙 검사
+│   ├── output.py                 # 출력
+│   └── qos_checker.py            # 메인 진입점
+├── resource/
+│   └── qos_guard
 ├── test/
 │   ├── test_copyright.py
 │   ├── test_flake8.py
 │   └── test_pep257.py
 ├── test_xml/
-│   ├── pub.xml           # Writer QoS profile
-│   └── sub.xml           # Reader QoS profile
+│   ├── pub.xml                   # Writer QoS profile
+│   └── sub.xml                   # Reader QoS profile
 ├── package.xml
 ├── setup.cfg
 └── setup.py

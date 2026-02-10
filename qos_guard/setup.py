@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'check_qos'
+package_name = 'qos_guard'
 
 setup(
     name=package_name,
@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-        "check_qos_cli= check_qos.qos_checker:main",
+        "qos_guard=qos_guard.qos_checker:main",
         ],
     },
 )
