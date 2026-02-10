@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Humble 스타일: publisher/subscriber 엔티티 프로파일 -->
+<!-- Humble style: publisher/subscriber entity profiles -->
 <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
     <profiles>
         <!-- Topic A: cmd_vel_sub - XML Entity Profile -->
@@ -42,7 +42,7 @@
             </qos>
         </subscriber>
 
-        <!-- Topic D: status_sub - Mixed Priority (코드 Reliable vs XML BestEffort) -->
+        <!-- Topic D: status_sub - Mixed Priority (code Reliable vs XML BestEffort) -->
         <subscriber profile_name="status_subscriber_profile">
             <topic>
                 <name>/status</name>

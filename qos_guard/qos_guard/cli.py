@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-CLI 인자 파싱 모듈.
+CLI argument parsing module.
 
-두 가지 모드 지원:
-1. XML 페어 모드: pub.xml sub.xml <dds> <ros_version> [publish_period=<Nms>] [rtt=<Nms>]
-2. 패키지 모드: <package_path> <dds> <ros_version> [publish_period=<Nms>] [rtt=<Nms>]
+Supports three modes:
+1. XML pair mode: pub.xml sub.xml <dds> <ros_version> [publish_period=<Nms>] [rtt=<Nms>]
+2. Package mode: <package_path> <dds> <ros_version> [publish_period=<Nms>] [rtt=<Nms>]
+3. XML list mode: --list <package_path>
 
 dds: fast | cyclone | connext
 ros_version: humble | jazzy | kilted
@@ -19,22 +20,23 @@ DDS_CHOICES = ("fast", "cyclone", "connext")
 ROS_CHOICES = ("humble", "jazzy", "kilted")
 
 USAGE = f"""Usage:
-  XML pair mode:
-    qos_guard <pub.xml> <sub.xml> <dds> <ros_version> [publish_period=<Nms>] [rtt=<Nms>]
+  Package mode (default):
+    qos_guard <package_path> [dds] [ros_version] [publish_period=<Nms>] [rtt=<Nms>]
+    
+  XML pair mode (optional):
+    qos_guard --xml <pub.xml> <sub.xml> <dds> <ros_version> [publish_period=<Nms>] [rtt=<Nms>]
 
-  Package mode:
-    qos_guard <package_path> <dds> <ros_version> [publish_period=<Nms>] [rtt=<Nms>]
+  XML list mode (optional):
+    qos_guard --list <package_path>
 
-  XML list mode (list all XML files in package):
-    qos_guard list <package_path>
-
-  dds: {', '.join(DDS_CHOICES)}
-  ros_version: {', '.join(ROS_CHOICES)}
+  dds: {', '.join(DDS_CHOICES)} (default: fast)
+  ros_version: {', '.join(ROS_CHOICES)} (default: humble)
 
 Examples:
-  qos_guard pub.xml sub.xml fast humble publish_period=40ms rtt=50ms
-  qos_guard /path/to/ros2_package fast humble
-  qos_guard list /home/hoon/navigation2
+  qos_guard /path/to/ros2_package                    # Package mode with defaults
+  qos_guard /path/to/ros2_package fast jazzy        # Package mode with specific DDS/ROS
+  qos_guard --xml pub.xml sub.xml fast humble         # XML pair mode
+  qos_guard --list /path/to/package                 # List XML files
 """
 
 DEFAULT_PUBLISH_PERIOD_MS = 40
@@ -43,7 +45,7 @@ DEFAULT_RTT_MS = 50
 
 @dataclass
 class XmlPairArgs:
-    """XML 페어 모드 인자."""
+    """XML pair mode arguments."""
 
     pub_path: Path
     sub_path: Path
@@ -56,11 +58,11 @@ class XmlPairArgs:
 
 @dataclass
 class PackageArgs:
-    """패키지 모드 인자."""
+    """Package mode arguments."""
 
     package_path: Path
-    dds: str
-    ros_version: str
+    dds: str = "fast"
+    ros_version: str = "humble"
     publish_period_ms: int = DEFAULT_PUBLISH_PERIOD_MS
     rtt_ns: int = DEFAULT_RTT_MS * 1_000_000
     mode: Literal["package"] = "package"
@@ -68,7 +70,7 @@ class PackageArgs:
 
 @dataclass
 class ListXmlArgs:
-    """XML 목록 모드 인자."""
+    """XML list mode arguments."""
 
     package_path: Path
     mode: Literal["list"] = "list"
@@ -79,7 +81,7 @@ CliArgs = Union[XmlPairArgs, PackageArgs]
 
 def parse_list_args(argv: list[str]) -> ListXmlArgs | None:
     """Return ListXmlArgs for list mode, otherwise None."""
-    if len(argv) >= 2 and argv[1].strip().lower() == "list":
+    if len(argv) >= 2 and argv[1].strip().lower() in ("--list", "-l"):
         if len(argv) < 3:
             sys.exit("[ERROR] list mode requires package_path.\n" + USAGE)
         path = Path(argv[2])
@@ -90,14 +92,14 @@ def parse_list_args(argv: list[str]) -> ListXmlArgs | None:
 
 
 def load_text(p: Path) -> str:
-    """파일 경로에서 텍스트를 로드합니다."""
+    """Load text from file path."""
     if not p.exists():
         sys.exit(f"[ERROR] File not found: {p}")
     return p.read_text(encoding="utf-8", errors="ignore")
 
 
 def _parse_period(arg: str) -> int:
-    """publish_period=<Nms> 형식에서 N을 파싱합니다."""
+    """Parse N from publish_period=<Nms> format."""
     if not arg.startswith("publish_period="):
         raise ValueError("must be publish_period=<Nms>")
     v = arg.split("=", 1)[1].strip().lower()
@@ -107,7 +109,7 @@ def _parse_period(arg: str) -> int:
 
 
 def _parse_rtt(arg: str) -> int:
-    """rtt=<Nms> 형식에서 N을 파싱하여 ns 단위로 반환합니다."""
+    """Parse N from rtt=<Nms> format and return in ns units."""
     if not arg.startswith("rtt="):
         raise ValueError("must be rtt=<Nms>")
     v = arg.split("=", 1)[1].strip().lower()
@@ -117,7 +119,7 @@ def _parse_rtt(arg: str) -> int:
 
 
 def _is_kv_arg(s: str) -> bool:
-    """publish_period= 또는 rtt= 형식인지 확인."""
+    """Check if format is publish_period= or rtt=."""
     return s.startswith("publish_period=") or s.startswith("rtt=")
 
 
@@ -137,84 +139,93 @@ def _parse_ros_version(s: str) -> str:
 
 def parse_args(argv: list[str]) -> CliArgs | ListXmlArgs:
     """
-    sys.argv를 파싱하여 CliArgs 또는 ListXmlArgs를 반환합니다.
+    Parse sys.argv and return CliArgs or ListXmlArgs.
 
-    - list <path>: XML 목록 모드
-    - 6개 이상 + 3·4번째가 dds, ros_version: xml_pair 모드
-    - 4개 이상 + 2·3번째가 dds, ros_version: package 모드
+    Default mode: Package mode (single path argument)
+    - --list: XML list mode
+    - --xml: XML pair mode
     """
     list_args = parse_list_args(argv)
     if list_args is not None:
         return list_args
 
-    if len(argv) < 4:
-        sys.exit(USAGE)
+    # Check for XML pair mode
+    if len(argv) >= 2 and argv[1].strip().lower() in ("--xml", "-x"):
+        if len(argv) < 6:
+            sys.exit("[ERROR] XML pair mode requires pub.xml sub.xml dds ros_version.\n" + USAGE)
+        
+        pub_path = Path(argv[2])
+        sub_path = Path(argv[3])
+        if not pub_path.exists():
+            sys.exit(f"[ERROR] File not found: {pub_path}")
+        if not sub_path.exists():
+            sys.exit(f"[ERROR] File not found: {sub_path}")
+            
+        dds = _parse_dds(argv[4])
+        ros_version = _parse_ros_version(argv[5])
 
-    # XML pair mode: 6+ args, 3rd/4th are dds, ros_version
-    if len(argv) >= 6:
-        a3 = argv[3].strip().lower() in DDS_CHOICES
-        a4 = argv[4].strip().lower() in ROS_CHOICES
-        if a3 and a4:
-            pub_path = Path(argv[1])
-            sub_path = Path(argv[2])
-            dds = _parse_dds(argv[3])
-            ros_version = _parse_ros_version(argv[4])
+        publish_period_ms = DEFAULT_PUBLISH_PERIOD_MS
+        rtt_ns = DEFAULT_RTT_MS * 1_000_000
 
-            publish_period_ms = DEFAULT_PUBLISH_PERIOD_MS
-            rtt_ns = DEFAULT_RTT_MS * 1_000_000
+        for arg in argv[6:]:
+            if not _is_kv_arg(arg):
+                sys.exit(f"[ERROR] Invalid argument: {arg}\n{USAGE}")
+            try:
+                if arg.startswith("publish_period="):
+                    publish_period_ms = _parse_period(arg)
+                else:
+                    rtt_ns = _parse_rtt(arg)
+            except ValueError as e:
+                sys.exit(f"[ERROR] {e}")
 
-            for arg in argv[5:]:
-                if not _is_kv_arg(arg):
-                    sys.exit(f"[ERROR] Invalid argument: {arg}\n{USAGE}")
-                try:
-                    if arg.startswith("publish_period="):
-                        publish_period_ms = _parse_period(arg)
-                    else:
-                        rtt_ns = _parse_rtt(arg)
-                except ValueError as e:
-                    sys.exit(f"[ERROR] {e}")
+        return XmlPairArgs(
+            pub_path=pub_path,
+            sub_path=sub_path,
+            dds=dds,
+            ros_version=ros_version,
+            publish_period_ms=publish_period_ms,
+            rtt_ns=rtt_ns,
+        )
 
-            return XmlPairArgs(
-                pub_path=pub_path,
-                sub_path=sub_path,
-                dds=dds,
-                ros_version=ros_version,
-                publish_period_ms=publish_period_ms,
-                rtt_ns=rtt_ns,
-            )
+    # Default: Package mode
+    if len(argv) < 2:
+        sys.exit("[ERROR] Package mode requires package_path.\n" + USAGE)
+        
+    path = Path(argv[1])
+    if not path.exists():
+        sys.exit(f"[ERROR] Path not found: {path}")
 
-    # Package mode: 4+ args, 2nd/3rd are dds, ros_version
-    if len(argv) >= 4:
-        b2 = argv[2].strip().lower() in DDS_CHOICES
-        b3 = argv[3].strip().lower() in ROS_CHOICES
-        if b2 and b3:
-            path = Path(argv[1])
-            if not path.exists():
-                sys.exit(f"[ERROR] Path not found: {path}")
+    # Default values
+    dds = "fast"
+    ros_version = "humble"
+    publish_period_ms = DEFAULT_PUBLISH_PERIOD_MS
+    rtt_ns = DEFAULT_RTT_MS * 1_000_000
 
-            dds = _parse_dds(argv[2])
-            ros_version = _parse_ros_version(argv[3])
+    # Parse optional arguments
+    i = 2
+    while i < len(argv):
+        arg = argv[i].strip()
+        
+        if arg in DDS_CHOICES:
+            dds = arg
+        elif arg in ROS_CHOICES:
+            ros_version = arg
+        elif _is_kv_arg(arg):
+            try:
+                if arg.startswith("publish_period="):
+                    publish_period_ms = _parse_period(arg)
+                else:
+                    rtt_ns = _parse_rtt(arg)
+            except ValueError as e:
+                sys.exit(f"[ERROR] {e}")
+        else:
+            sys.exit(f"[ERROR] Invalid argument: {arg}\n{USAGE}")
+        i += 1
 
-            publish_period_ms = DEFAULT_PUBLISH_PERIOD_MS
-            rtt_ns = DEFAULT_RTT_MS * 1_000_000
-
-            for arg in argv[4:]:
-                if not _is_kv_arg(arg):
-                    sys.exit(f"[ERROR] Invalid argument: {arg}\n{USAGE}")
-                try:
-                    if arg.startswith("publish_period="):
-                        publish_period_ms = _parse_period(arg)
-                    else:
-                        rtt_ns = _parse_rtt(arg)
-                except ValueError as e:
-                    sys.exit(f"[ERROR] {e}")
-
-            return PackageArgs(
-                package_path=path,
-                dds=dds,
-                ros_version=ros_version,
-                publish_period_ms=publish_period_ms,
-                rtt_ns=rtt_ns,
-            )
-
-    sys.exit(USAGE)
+    return PackageArgs(
+        package_path=path,
+        dds=dds,
+        ros_version=ros_version,
+        publish_period_ms=publish_period_ms,
+        rtt_ns=rtt_ns,
+    )

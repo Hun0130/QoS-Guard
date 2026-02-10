@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-XML 파싱 Facade.
+XML parsing Facade.
 
-DDS 벤더에 따라 적절한 파서를 호출합니다.
+Call appropriate parser according to DDS vendor.
 - fast: xml_parser_fastdds
 - cyclone: xml_parser_cyclone
 - connext: xml_parser_connext
@@ -19,7 +19,7 @@ _PARSERS = {
     "connext": xml_parser_connext,
 }
 
-# Fast DDS EntityBlock 타입 re-export
+# Fast DDS EntityBlock type re-export
 EntityBlock = xml_parser_fastdds.EntityBlock
 
 
@@ -63,7 +63,7 @@ def extract_all_entity_blocks(xml: str, dds: str = "fast") -> List["EntityBlock"
 
 
 def get_topic_profile_qos(full_xml: str, topic_name: str | None, dds: str = "fast") -> "Dict[str, str | list[str]] | None":
-    """topic_name에 매칭되는 XML topic 프로파일 QoS 반환 (코드 전용 엔티티용)."""
+    """Return QoS from XML topic profile matching topic_name (for code-only entities)."""
     parser = _PARSERS.get(dds)
     if parser is None or not hasattr(parser, "get_topic_profile_qos"):
         return None

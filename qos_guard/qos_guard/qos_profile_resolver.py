@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-QoS 프로파일 일반화 해석기.
+QoS profile generalized interpreter.
 
-1단계: 프로젝트 전역 심볼 수집 (Global Symbol Collection)
-2단계: 정의부 내부 로직 파싱 (Internal Logic Parsing)
-3단계: 호출부 매핑 (Caller Mapping) - code_scanner에서 사전 참조
+Stage 1: Project global symbol collection (Global Symbol Collection)
+Stage 2: Internal logic parsing within definitions (Internal Logic Parsing)
+Stage 3: Caller mapping - dictionary reference from code_scanner
 """
 import re
 from pathlib import Path
@@ -52,7 +52,7 @@ def _parse_cpp_qos_body(body: str) -> dict[str, str]:
         "history_depth": "10",
     }
 
-    # KeepLast(N) 또는 KeepAll - 초기화 리스트/본문
+    # KeepLast(N) or KeepAll - initialization list/body
     m = re.search(
         r"(?:rclcpp::)?(?:KeepLast|KeepAll)\s*\(\s*(\d+)\s*\)",
         body,
@@ -61,7 +61,7 @@ def _parse_cpp_qos_body(body: str) -> dict[str, str]:
     if m:
         out["history_depth"] = m.group(1)
         out["history"] = "KEEP_LAST" if "keepall" not in body.lower()[:m.start()] else "KEEP_ALL"
-    # KeepLast(depth) - 파라미터 사용 시 기본값은 별도 처리
+    # KeepLast(depth) - when using parameter, default value handled separately
     m_param = re.search(
         r"(?:rclcpp::)?KeepLast\s*\(\s*(\w+)\s*\)",
         body,
@@ -69,7 +69,7 @@ def _parse_cpp_qos_body(body: str) -> dict[str, str]:
     )
     if m_param and not m:
         param_name = m_param.group(1)
-        # 같은 함수/생성자 시그니처에서 param = default 추출
+        # Extract param = default from same function/constructor signature
         def_match = re.search(
             rf"\b{re.escape(param_name)}\s*=\s*(\d+)",
             body,
@@ -127,7 +127,7 @@ def _parse_cpp_qos_body(body: str) -> dict[str, str]:
 
 
 def _parse_py_qos_content(content: str) -> dict[str, str]:
-    """Python QoSProfile(...) 또는 함수 본문에서 reliability, durability, depth 추출."""
+    """Extract reliability, durability, depth from Python QoSProfile(...) or function body."""
     out: dict[str, str] = {
         "reliability": "",
         "durability": "",
@@ -155,18 +155,18 @@ def _parse_py_qos_content(content: str) -> dict[str, str]:
     return out
 
 
-# ────────── 1단계: 심볼 수집 패턴 ──────────
-# class X : public rclcpp::QoS (또는 : rclcpp::QoS)
+# ────────── Stage 1: Symbol collection patterns ──────────
+# class X : public rclcpp::QoS (or : rclcpp::QoS)
 _RE_CPP_CLASS_QOS = re.compile(
     r"class\s+(\w+)\s*:\s*(?:public\s+)?(?:rclcpp::)?QoS\b",
     re.I,
 )
-# rclcpp::QoS foo() 또는 QoS foo()
+# rclcpp::QoS foo() or QoS foo()
 _RE_CPP_FUNC_RET_QOS = re.compile(
     r"(?:rclcpp::)?QoS\s+(\w+)\s*\(",
     re.I,
 )
-# 생성자 파라미터 기본값: (const int depth = 1)
+# Constructor parameter default: (const int depth = 1)
 _RE_CPP_PARAM_DEFAULT = re.compile(
     r"\(\s*(?:const\s+)?(?:int|size_t)\s+(\w+)\s*=\s*(\d+)\s*\)",
     re.I,
@@ -195,10 +195,10 @@ def _get_namespace_prefix(content: str, before_pos: int) -> str:
 
 
 def _extract_cpp_qos_symbols(content: str, file_path: Path) -> dict[str, dict[str, str]]:
-    """C++ 파일에서 QoS를 반환/생성하는 심볼(클래스, 함수) 수집 및 본문 파싱."""
+    """Collect and parse symbols (classes, functions) that return/generate QoS in C++ files."""
     result: dict[str, dict[str, str]] = {}
 
-    # 클래스: class X : public rclcpp::QoS { ... }
+    # Class: class X : public rclcpp::QoS { ... }
     for m in _RE_CPP_CLASS_QOS.finditer(content):
         name = m.group(1)
         ns_prefix = _get_namespace_prefix(content, m.start())
@@ -208,7 +208,7 @@ def _extract_cpp_qos_symbols(content: str, file_path: Path) -> dict[str, dict[st
         if end is None:
             continue
         body = content[start:end + 1]
-        # 생성자 파라미터 기본값 (depth = 1 등)
+        # Constructor parameter default (depth = 1, etc.)
         param_default = _RE_CPP_PARAM_DEFAULT.search(body)
         default_depth = param_default.group(2) if param_default else "10"
         qos = _parse_cpp_qos_body(body)
@@ -218,12 +218,12 @@ def _extract_cpp_qos_symbols(content: str, file_path: Path) -> dict[str, dict[st
         if full_name != name:
             result[full_name] = qos
 
-    # 함수: rclcpp::QoS foo() { ... }
+    # Function: rclcpp::QoS foo() { ... }
     for m in _RE_CPP_FUNC_RET_QOS.finditer(content):
         name = m.group(1)
         if name in result:
-            continue  # 클래스에서 이미 처리됨 (생성자와 구분)
-        # 함수 본문 { 찾기 - 괄호 짝 맞추기
+            continue  # already handled in class (distinguish from constructor)
+        # Find function body { - brace matching
         paren_start = content.find("(", m.start())
         if paren_start < 0:
             continue
@@ -249,31 +249,31 @@ def _extract_cpp_qos_symbols(content: str, file_path: Path) -> dict[str, dict[st
     return result
 
 
-# Python: def foo(): return QoSProfile(...) 또는 var = QoSProfile(...)
+# Python: def foo(): return QoSProfile(...) or var = QoSProfile(...)
 _RE_PY_DEF = re.compile(r"def\s+(\w+)\s*\([^)]*\)\s*:", re.I)
 _RE_PY_QOS_PROFILE = re.compile(r"QoSProfile\s*\(([^)]*)\)", re.I | re.S)
 _RE_PY_RETURN_QOS = re.compile(r"return\s+(?:QoSProfile\s*\([^)]*\)|\w+)", re.I)
 
 
 def _extract_py_qos_symbols(content: str, file_path: Path) -> dict[str, dict[str, str]]:
-    """Python 파일에서 QoSProfile을 반환하는 함수/변수 수집."""
+    """Collect functions/variables that return QoSProfile in Python files."""
     result: dict[str, dict[str, str]] = {}
 
-    # 모듈 레벨: var = QoSProfile(...)
+    # Module level: var = QoSProfile(...)
     for m in _RE_PY_QOS_PROFILE.finditer(content):
         args = m.group(1)
         qos = _parse_py_qos_content(args)
-        # 변수명 추출 - 같은 줄에서 var = QoSProfile
+        # Extract variable name - var = QoSProfile on same line
         before = content[: m.start()].split("\n")[-1]
         var_m = re.search(r"(\w+)\s*=\s*QoSProfile\s*$", before)
         if var_m:
             result[var_m.group(1)] = qos
 
-    # def foo(): ... return QoSProfile(...) 또는 return qos_var
+    # def foo(): ... return QoSProfile(...) or return qos_var
     for m in _RE_PY_DEF.finditer(content):
         name = m.group(1)
         start = m.end()
-        # 함수 본문 (들여쓰기 기준)
+        # Function body (based on indentation)
         lines = content[start:].split("\n")
         body_lines: list[str] = []
         base_indent = None
@@ -291,13 +291,13 @@ def _extract_py_qos_symbols(content: str, file_path: Path) -> dict[str, dict[str
             body_lines.append(line)
         body = "\n".join(body_lines)
         if _RE_PY_RETURN_QOS.search(body):
-            # return QoSProfile(...) 직접
+            # Direct return QoSProfile(...)
             ret_qos = _RE_PY_QOS_PROFILE.search(body)
             if ret_qos:
                 qos = _parse_py_qos_content(ret_qos.group(1))
                 result[name] = qos
             else:
-                # return qos_var - 변수 정의 찾기
+                # return qos_var - find variable definition
                 ret_var = re.search(r"return\s+(\w+)\s*$", body, re.M | re.I)
                 if ret_var:
                     var_name = ret_var.group(1)
@@ -429,7 +429,7 @@ def build_qos_dictionary(
     """
     Build Custom QoS Dictionary from package sources.
 
-    1단계+2단계: Scan all .hpp, .h, .cpp, .py under package_path
+    Stage 1+2: Scan all .hpp, .h, .cpp, .py under package_path
     and extra_paths to collect QoS-producing symbols.
 
     Args:
@@ -444,7 +444,7 @@ def build_qos_dictionary(
     if extra_paths:
         roots.extend(Path(p).resolve() for p in extra_paths if Path(p).is_dir())
 
-    # ① Composition: rclcpp built-in profiles (SensorDataQoS, StandardTopicQoS 등)
+    # ① Composition: rclcpp built-in profiles (SensorDataQoS, StandardTopicQoS, etc.)
     combined: dict[str, dict[str, str]] = dict(get_builtin_rclcpp_profiles())
 
     exts = ("*.cpp", "*.hpp", "*.h", "*.py")
@@ -477,27 +477,27 @@ def resolve_qos_from_expression(
     """
     Return QoS from Custom QoS Dictionary for given expression.
 
-    3단계 호출부 매핑. qos_expr이 "MyQoS()", "nav2::qos::LatchedPublisherQoS()"
-    형식일 때 심볼명을 추출하여 사전에서 조회.
+    Stage 3 caller mapping. When qos_expr is "MyQoS()", "nav2::qos::LatchedPublisherQoS()"
+    Extract symbol name and lookup in dictionary when format is like "MyQoS()", "nav2::qos::LatchedPublisherQoS()".
     """
     qos_expr = (qos_expr or "").strip()
-    # 심볼명 추출: [\w:]+ 패턴으로 이름 전체 캡처
-    #   my_project::QoS() -> my_project::QoS (전체), QoS (short)
+    # Symbol name extraction: capture full name with [\w:]+ pattern
+    #   my_project::QoS() -> my_project::QoS (full), QoS (short)
     #   nav2::qos::LatchedPublisherQoS() -> nav2::qos::LatchedPublisherQoS, LatchedPublisherQoS
     m = re.search(r"([\w:]+)\s*[\（(]", qos_expr, re.I)
     if m:
         full_sym = m.group(1).strip()
         short_sym = full_sym.split("::")[-1] if "::" in full_sym else full_sym
-        # 전체 이름 우선, 없으면 short 이름으로 폴백
+        # Prefer full name, fallback to short name if not found
         sym = full_sym if full_sym in qos_dict else short_sym
         if sym in qos_dict:
             base = dict(qos_dict[sym])
-            # 인자로 depth 전달: LatchedPublisherQoS(5) -> history_depth=5
+            # Pass depth as argument: LatchedPublisherQoS(5) -> history_depth=5
             depth_arg = re.search(r"\(\s*(\d+)\s*\)?", qos_expr)
             if depth_arg:
                 base["history_depth"] = depth_arg.group(1)
             return base
-    # 단순 식별자: qos_var
+    # Simple identifier: qos_var
     m2 = re.match(r"^\s*([a-zA-Z_]\w*)\s*$", qos_expr)
     if m2 and m2.group(1) in qos_dict:
         return dict(qos_dict[m2.group(1)])

@@ -1,7 +1,7 @@
 /**
  * Topic D: /status Isolated Publisher
- * No matching subscriber - connection target 없음
- * Default Trap: is_default_profile="true" 사용
+ * No matching subscriber - no connection target
+ * Default Trap: uses is_default_profile="true"
  */
 #include <chrono>
 #include <rclcpp/rclcpp.hpp>

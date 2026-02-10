@@ -3,7 +3,7 @@
 <package format="3">
   <name>qos_test_pkg</name>
   <version>0.0.1</version>
-  <description>QoS-Guard 정적 분석 테스트용 패키지. 의도적으로 QoS가 복잡하게 뒤섞인 구조.</description>
+  <description>QoS-Guard static analysis test package. Intentionally complex QoS mixed structure.</description>
   <maintainer email="test@test.com">QoS-Guard Test</maintainer>
   <license>Apache-2.0</license>
 

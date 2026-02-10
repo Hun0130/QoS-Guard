@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-QoS 파라미터 YAML 로더.
+QoS parameter YAML loader.
 
-② YAML 파라미터를 통한 QoS 결정.
-config/*.yaml, params/*.yaml 등에서 reliability, durability, depth 추출.
+② QoS determination through YAML parameters.
+Extract reliability, durability, depth from config/*.yaml, params/*.yaml, etc.
 """
 import re
 from pathlib import Path
@@ -19,11 +19,11 @@ def _read_yaml_safe(path: Path) -> str:
 
 def _parse_yaml_scalar(content: str, key: str) -> str | None:
     """
-    Single-file YAML에서 key: value 추출 (간단한 패턴).
-    들여쓰기와 중첩 구조를 고려.
+    Extract key: value from single-file YAML (simple pattern).
+    Consider indentation and nested structure.
     """
     key_esc = re.escape(key)
-    # key: value (단순)
+    # key: value (simple)
     m = re.search(rf"^\s*{key_esc}\s*:\s*[\"']?([^\"'\s#]+)[\"']?\s*(?:#|$)", content, re.M | re.I)
     if m:
         return m.group(1).strip().strip('"\'')
@@ -36,12 +36,12 @@ def _parse_yaml_scalar(content: str, key: str) -> str | None:
 
 def _parse_yaml_node_params(content: str, node_name: str) -> dict[str, str]:
     """
-    ros__parameters 아래 node_name.ros__parameters 에서 QoS 관련 추출.
+    Extract QoS-related from node_name.ros__parameters under ros__parameters.
     """
     out: dict[str, str] = {}
-    # node_name: / ros__parameters: / **/ 로 시작하는 블록 찾기
+    # node_name: / ros__parameters: / find blocks starting with **/
     node_esc = re.escape(node_name)
-    # Simplistic: 전체 content에서 key: value 검색 (노드 스코프 무시)
+    # Simplistic: search key: value in entire content (ignore node scope)
     for key in ("reliability", "durability", "depth", "qos_depth", "history_depth"):
         v = _parse_yaml_scalar(content, key)
         if v:
@@ -65,11 +65,11 @@ def _parse_yaml_node_params(content: str, node_name: str) -> dict[str, str]:
 
 def load_qos_from_yaml_files(package_path: Path) -> dict[str, dict[str, str]]:
     """
-    config/*.yaml, params/*.yaml 등에서 QoS 파라미터 추출.
+    Extract QoS parameters from config/*.yaml, params/*.yaml, etc.
 
     Returns:
         {"default": {"reliability": "RELIABLE", "history_depth": "10", ...}}
-        code에서 빈 필드 보강 시 사용.
+        Used to supplement empty fields in code.
     """
     package_path = Path(package_path).resolve()
     if not package_path.is_dir():
@@ -106,9 +106,9 @@ def merge_yaml_qos_into(
     param_key: str | None = None,
 ) -> dict[str, str]:
     """
-    YAML에서 읽은 QoS 파라미터를 code에서 추출한 qos에 병합.
+    Merge QoS parameters read from YAML into qos extracted from code.
 
-    code에서 빈 필드일 때만 YAML 기본값으로 보강.
+    Supplement with YAML default values only when fields are empty in code.
     """
     if not yaml_params:
         return qos

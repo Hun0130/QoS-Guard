@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-3단계 멀티 패턴 토픽 추출 엔진.
+3-stage multi-pattern topic extraction engine.
 
-Tier 1 (Literal): create_publisher/subscription 리터럴
-Tier 2 (Parameter): declare_parameter 기본값
+Tier 1 (Literal): create_publisher/subscription literals
+Tier 2 (Parameter): declare_parameter defaults
 Tier 3 (Constant): constexpr, const std::string, #define
 
-추출된 토픽을 XML <topic profile_name="...">, entity 프로파일과 매칭 가능하도록 가공.
+Process extracted topics to enable matching with XML <topic profile_name="...">, entity profiles.
 """
 import re
 from dataclasses import dataclass
@@ -67,8 +67,8 @@ _RE_CPP_DECLARE_PARAM_ALT = re.compile(
     r"\(\s*[\"']([^\"']+)[\"']\s*,\s*std::string\s*\{\s*[\"']([^\"']*)[\"']\s*\}\s*\)",
     re.I | re.S,
 )
-# 동적 파라미터: declare_or_get_parameter(name_ + "." + "map_topic", std::string("map"))
-# 첫 인자에 topic 관련 suffix가 있으면 default를 topic으로 사용
+# Dynamic parameter: declare_or_get_parameter(name_ + "." + "map_topic", std::string("map"))
+# If first argument has topic-related suffix, use default as topic
 _RE_CPP_DECLARE_PARAM_DYNAMIC = re.compile(
     r"(?:declare_parameter|declare_or_get_parameter)\s*"
     r"\(\s*[^)]*\+\s*[^)]*[\"']\.?(\w+)[\"']\s*[^)]*,\s*std::string\s*[({\s]*[\"']([^\"']*)[\"']",
@@ -109,7 +109,7 @@ _RE_PY_CONST = re.compile(
     re.M,
 )
 
-# ────────── QoS 추출 (code_scanner 로직 재사용) ──────────
+# ────────── QoS extraction (reuse code_scanner logic) ──────────
 _RE_CPP_RELIABILITY = re.compile(
     r"\.reliability\s*\(\s*(?:rclcpp::)?ReliabilityPolicy\s*::\s*(\w+)\s*\)",
     re.I,
@@ -136,7 +136,7 @@ _RE_PY_DEPTH = re.compile(r"depth\s*=\s*(\d+)", re.I)
 
 
 def _normalize_topic(t: str) -> str:
-    """토픽 정규화: route_graph -> /route_graph, /cmd_vel -> /cmd_vel."""
+    """Topic normalization: route_graph -> /route_graph, /cmd_vel -> /cmd_vel."""
     if not t or not t.strip():
         return ""
     t = t.strip().strip('"\'')
@@ -146,7 +146,7 @@ def _normalize_topic(t: str) -> str:
 
 
 def _is_topic_like(s: str) -> bool:
-    """토픽 형식인지 (/, 또는 common ROS topic 패턴)."""
+    """Check if topic format (/, or common ROS topic patterns)."""
     if not s:
         return False
     s = s.strip()
@@ -158,7 +158,7 @@ def _is_topic_like(s: str) -> bool:
         return False
     if s.startswith("/"):
         return not s.startswith("//") and s[1] != "/"
-    # param name으로 topic 유추: map_topic, filter_info_topic, route_graph
+    # Infer topic from param name: map_topic, filter_info_topic, route_graph
     lower = s.lower()
     if any(x in lower for x in ("topic", "graph", "costmap", "map", "filter")):
         return True
@@ -166,14 +166,14 @@ def _is_topic_like(s: str) -> bool:
 
 
 def _extract_qos_from_content(content: str, start_pos: int = 0) -> dict[str, str]:
-    """파일 내용에서 QoS 설정 추출 (해당 위치 근처 우선)."""
+    """Extract QoS settings from file content (prioritize near relevant position)."""
     out: dict[str, str] = {
         "reliability": "",
         "durability": "",
         "history": "KEEP_LAST",
         "history_depth": "10",
     }
-    # 앞뒤 2000자 컨텍스트
+    # 2000 character context before/after
     ctx_start = max(0, start_pos - 1000)
     ctx_end = min(len(content), start_pos + 1000)
     ctx = content[ctx_start:ctx_end]
@@ -218,12 +218,12 @@ def _extract_qos_from_content(content: str, start_pos: int = 0) -> dict[str, str
 
 
 def _get_line_number(content: str, pos: int) -> int:
-    """문자 위치 -> 줄 번호."""
+    """Character position -> line number."""
     return content.count("\n", 0, pos) + 1
 
 
 def _extract_tier1_cpp(path: Path, content: str) -> list[dict]:
-    """Tier 1: C++ create_publisher/subscription 리터럴."""
+    """Tier 1: C++ create_publisher/subscription literals."""
     results: list[dict] = []
     seen: set[tuple[str, int]] = set()
 
@@ -267,7 +267,7 @@ def _extract_tier1_cpp(path: Path, content: str) -> list[dict]:
 
 
 def _extract_tier1_py(path: Path, content: str) -> list[dict]:
-    """Tier 1: Python create_publisher/subscription 리터럴."""
+    """Tier 1: Python create_publisher/subscription literals."""
     results: list[dict] = []
     seen: set[tuple[str, int]] = set()
 
@@ -356,7 +356,7 @@ def _extract_tier1_py(path: Path, content: str) -> list[dict]:
 
 
 def _extract_tier2_cpp(path: Path, content: str) -> list[dict]:
-    """Tier 2: C++ declare_parameter 기본값."""
+    """Tier 2: C++ declare_parameter defaults."""
     results: list[dict] = []
     seen: set[tuple[str, int]] = set()
 
@@ -457,7 +457,7 @@ def _extract_tier2_cpp(path: Path, content: str) -> list[dict]:
 
 
 def _extract_tier2_py(path: Path, content: str) -> list[dict]:
-    """Tier 2: Python declare_parameter 기본값."""
+    """Tier 2: Python declare_parameter defaults."""
     results: list[dict] = []
     seen: set[tuple[str, int]] = set()
 
@@ -559,7 +559,7 @@ def _extract_tier3_cpp(path: Path, content: str) -> list[dict]:
 
 
 def _extract_tier3_py(path: Path, content: str) -> list[dict]:
-    """Tier 3: Python 변수 할당 (TOPIC = "/topic")."""
+    """Tier 3: Python variable assignment (TOPIC = "/topic")."""
     results: list[dict] = []
     seen: set[tuple[str, int]] = set()
 
@@ -596,7 +596,7 @@ def _extract_tier3_py(path: Path, content: str) -> list[dict]:
 
 def extract_topics(package_path: Path) -> dict[str, dict]:
     """
-    3단계 패턴으로 잠재적 토픽 리스트 추출.
+    Extract potential topic list with 3-stage patterns.
 
     Returns
     -------
@@ -607,7 +607,7 @@ def extract_topics(package_path: Path) -> dict[str, dict]:
                 "file_path": "src/node.cpp",
                 "line_number": 42,
                 "detected_qos": { "reliability": "...", "durability": "..." },
-                "entity_type": "pub" | "sub" (Literal만)
+                "entity_type": "pub" | "sub" (Literal only)
             }
         }
     """
@@ -616,7 +616,7 @@ def extract_topics(package_path: Path) -> dict[str, dict]:
         return {}
 
     out: dict[str, dict] = {}
-    # Tier 1 우선, 그 다음 Tier 2/3 (덮어쓰지 않음 - Literal이 가장 신뢰)
+    # Prioritize Tier 1, then Tier 2/3 (don't overwrite - Literal is most reliable)
     all_raw: list[dict] = []
 
     for src_path in code_scanner.find_source_files(package_path):
@@ -636,7 +636,7 @@ def extract_topics(package_path: Path) -> dict[str, dict]:
             all_raw.extend(_extract_tier2_py(src_path, content))
             all_raw.extend(_extract_tier3_py(src_path, content))
 
-    # 동일 토픽: Literal > Parameter > Constant
+    # Same topic: Literal > Parameter > Constant
     priority = {"Literal": 0, "Parameter": 1, "Constant": 2}
 
     for r in all_raw:

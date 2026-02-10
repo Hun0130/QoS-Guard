@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for qos_profile_resolver - 3단계 일반화 스캐닝."""
+"""Tests for qos_profile_resolver - 3-stage generalized scanning."""
 
 import tempfile
 from pathlib import Path
@@ -66,10 +66,10 @@ def get_latched_qos():
 
 
 class TestBuildQosDictionary:
-    """1단계+2단계: Global Symbol Collection 및 Internal Logic Parsing."""
+    """Stage 1+2: Global Symbol Collection and Internal Logic Parsing."""
 
     def test_extracts_cpp_class_qos(self):
-        """C++ 클래스(class X : public rclcpp::QoS) 파싱."""
+        """Parse C++ class (class X : public rclcpp::QoS)."""
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "qos.hpp").write_text(LATCHED_PUB_HPP)
             d = qos_profile_resolver.build_qos_dictionary(Path(tmp))
@@ -79,7 +79,7 @@ class TestBuildQosDictionary:
         assert d["LatchedPublisherQoS"]["history_depth"] == "1"
 
     def test_extracts_namespace_class(self):
-        """namespace my_project { class QoS } -> my_project::QoS 등록."""
+        """Register namespace my_project { class QoS } -> my_project::QoS."""
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "utils.hpp").write_text(NAMESPACE_QOS_HPP)
             d = qos_profile_resolver.build_qos_dictionary(Path(tmp))
@@ -88,7 +88,7 @@ class TestBuildQosDictionary:
         assert d["my_project::QoS"]["history_depth"] == "5"
 
     def test_extracts_py_function_qos(self):
-        """Python 함수(def get_latched_qos) 파싱."""
+        """Parse Python function (def get_latched_qos)."""
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "qos_utils.py").write_text(PY_GET_QOS)
             d = qos_profile_resolver.build_qos_dictionary(Path(tmp))
@@ -99,10 +99,10 @@ class TestBuildQosDictionary:
 
 
 class TestResolveQosFromExpression:
-    """3단계: Caller Mapping."""
+    """Stage 3: Caller Mapping."""
 
     def test_resolves_nav2_style(self):
-        """nav2::qos::LatchedPublisherQoS() -> 사전 조회."""
+        """nav2::qos::LatchedPublisherQoS() -> dictionary lookup."""
         d = {
             "LatchedPublisherQoS": {
                 "reliability": "RELIABLE",
@@ -135,7 +135,7 @@ class TestResolveQosFromExpression:
         assert r["history_depth"] == "5"
 
     def test_resolves_variable(self):
-        """qos_var -> 사전 조회."""
+        """qos_var -> dictionary lookup."""
         d = {
             "qos_var": {
                 "reliability": "BEST_EFFORT",
@@ -149,12 +149,12 @@ class TestResolveQosFromExpression:
         assert r["reliability"] == "BEST_EFFORT"
 
     def test_returns_none_unknown(self):
-        """알 수 없는 심볼 -> None."""
+        """Unknown symbol -> None."""
         d = {}
         assert qos_profile_resolver.resolve_qos_from_expression("UnknownQoS()", d) is None
 
     def test_resolves_full_namespace(self):
-        """my_project::QoS() - 전체 이름 캡처 및 조회."""
+        """my_project::QoS() - full name capture and lookup."""
         d = {
             "my_project::QoS": {
                 "reliability": "RELIABLE",
@@ -170,7 +170,7 @@ class TestResolveQosFromExpression:
         assert r["reliability"] == "RELIABLE"
 
     def test_resolves_short_fallback(self):
-        """nav2::qos::LatchedPublisherQoS() - 전체 이름 없으면 short로 폴백."""
+        """nav2::qos::LatchedPublisherQoS() - fallback to short if no full name."""
         d = {"LatchedPublisherQoS": {"reliability": "RELIABLE", "durability": "TRANSIENT_LOCAL", "history_depth": "1", "history": "KEEP_LAST"}}
         r = qos_profile_resolver.resolve_qos_from_expression(
             "nav2::qos::LatchedPublisherQoS()", d
@@ -181,10 +181,10 @@ class TestResolveQosFromExpression:
 
 @pytest.mark.functional
 class TestScanCodeIntegration:
-    """3단계 full pipeline: 헤더 정의 + cpp 사용 -> scan_code가 올바른 QoS 추출."""
+    """Stage 3 full pipeline: header definition + cpp usage -> scan_code extracts correct QoS."""
 
     def test_scan_code_uses_qos_dictionary(self):
-        """패키지에 .hpp(정의) + .cpp(사용) 있으면 scan_code가 사전에서 조회."""
+        """If package has .hpp(definition) + .cpp(usage), scan_code looks up in dictionary."""
         with tempfile.TemporaryDirectory() as tmp:
             pkg = Path(tmp)
             (pkg / "include" / "qos").mkdir(parents=True)
@@ -208,7 +208,7 @@ int main() {
         assert qos.get("history_depth") == "1"
 
     def test_scan_code_python_qos_function(self):
-        """Python: def get_qos() + create_publisher(..., qos_profile=get_qos()) -> 사전 조회."""
+        """Python: def get_qos() + create_publisher(..., qos_profile=get_qos()) -> dictionary lookup."""
         with tempfile.TemporaryDirectory() as tmp:
             pkg = Path(tmp)
             (pkg / "node.py").write_text(PY_GET_QOS + '''

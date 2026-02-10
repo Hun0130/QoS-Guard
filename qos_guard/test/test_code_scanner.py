@@ -65,7 +65,7 @@ CPP_COMPOSITION = '''
   create_publisher<Msg>("/sensor", qos);
 '''
 
-# ③ 멤버 변수: qos_.reliable(), qos_.keep_last(10) - .reliable() 직접
+# ③ Member variables: qos_.reliable(), qos_.keep_last(10) - .reliable() directly
 CPP_MEMBER_RELIABLE = '''
   void init() { qos_.reliable(); qos_.keep_last(10); }
   void run() { create_publisher<Msg>("/topic", qos_); }
@@ -168,7 +168,7 @@ class TestCppScanner:
         assert e.qos_from_code.get("durability") == "VOLATILE"
 
     def test_extract_member_reliable(self):
-        """③ 멤버 변수: qos_.reliable(), qos_.keep_last(10) 검색."""
+        """③ Member variables: search qos_.reliable(), qos_.keep_last(10)."""
         entities = code_scanner.scan_cpp_file(
             Path("/fake/node.cpp"),
             CPP_MEMBER_RELIABLE,
@@ -192,7 +192,7 @@ class TestCppScanner:
         assert e.qos_from_code.get("history_depth") == "10"
 
     def test_extract_rclcpp_qos_ctor_simple(self):
-        """rclcpp::QoS(10) - 생성자에 숫자 직접, depth=10."""
+        """rclcpp::QoS(10) - direct number in constructor, depth=10."""
         entities = code_scanner.scan_cpp_file(
             Path("/fake/main.cpp"),
             CPP_QOS_CTOR_SIMPLE,
@@ -202,7 +202,7 @@ class TestCppScanner:
         assert e.qos_from_code.get("history_depth") == "10"
 
     def test_extract_nav2_latched_publisher_qos(self):
-        """3단계: Custom QoS Dictionary에서 LatchedPublisherQoS 조회."""
+        """Stage 3: Lookup LatchedPublisherQoS from Custom QoS Dictionary."""
         qos_dict = {
             "LatchedPublisherQoS": {
                 "reliability": "RELIABLE",

@@ -1,7 +1,7 @@
 /**
  * Topic D: /status Isolated Subscriber
- * No matching publisher - 구독 대상 없음
- * Mixed Priority: 코드와 XML이 충돌하는 값 가짐
+ * No matching publisher - no subscription target
+ * Mixed Priority: has conflicting values between code and XML
  */
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>

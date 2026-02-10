@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- XML Topic Profile: profile_name으로 토픽명 매칭, 최우선 순위 -->
+<!-- XML Topic Profile: profile_name matches topic name, highest priority -->
 <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
     <profiles>
-        <!-- Topic B: /sensor_data - XML Topic Profile (1 Pub에 적용) -->
+        <!-- Topic B: /sensor_data - XML Topic Profile (applied to 1 Pub) -->
         <topic profile_name="/sensor_data">
             <historyQos>
                 <kind>KEEP_LAST</kind>
@@ -15,7 +15,7 @@
             </resourceLimitsQos>
         </topic>
 
-        <!-- Topic C: /map - XML Topic Profile (N:1 구조) -->
+        <!-- Topic C: /map - XML Topic Profile (N:1 structure) -->
         <topic profile_name="/map">
             <historyQos>
                 <kind>KEEP_LAST</kind>
@@ -28,7 +28,7 @@
             </resourceLimitsQos>
         </topic>
 
-        <!-- Topic D: /status - Mixed Priority용 (topic vs entity vs code 충돌) -->
+        <!-- Topic D: /status - For Mixed Priority (topic vs entity vs code conflict) -->
         <topic profile_name="/status">
             <historyQos>
                 <kind>KEEP_ALL</kind>

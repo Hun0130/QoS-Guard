@@ -19,7 +19,7 @@ from . import topic_extractor
 from . import node_resolver
 from .xml_parser import EntityBlock
 
-# profile_name에서 base 추출 (매칭용)
+# Extract base from profile_name (for matching)
 _BASE_EXTRACT_RE = re.compile(
     r"(?:_?(?:pub(?:lisher)?|sub(?:scriber)?|data_?writer|data_?reader"
     r"|writer|reader|writer_profile|reader_profile|pub_profile|sub_profile"
@@ -30,7 +30,7 @@ _WILDCARD_KEYWORDS = ("default", "common", "generic")
 
 
 def qos_entity_to_block(entity: "QosEntity") -> EntityBlock:
-    """QosEntity를 resolve_profile_for_block용 EntityBlock으로 변환."""
+    """Convert QosEntity to EntityBlock for resolve_profile_for_block."""
     tag = entity.entity_tag or (
         "publisher" if entity.entity_type == "pub" else "subscriber"
     )
@@ -46,8 +46,8 @@ def qos_entity_to_block(entity: "QosEntity") -> EntityBlock:
 
 def get_fastrtps_env_xml_paths() -> list[Path]:
     """
-    FASTRTPS_DEFAULT_PROFILES_FILE, RMW_FASTRTPS_CONFIG_FILE 환경변수로 지정된
-    외부 XML 파일 경로 목록 반환.
+    Return list of external XML file paths specified by
+    FASTRTPS_DEFAULT_PROFILES_FILE, RMW_FASTRTPS_CONFIG_FILE environment variables.
     """
     paths: list[Path] = []
     seen: set[Path] = set()
@@ -65,11 +65,15 @@ def get_fastrtps_env_xml_paths() -> list[Path]:
 def find_all_xml_files(package_path: Path, dds: str = "fast") -> list[Path]:
     """
     Recursively find all *.xml files under package path, excluding package.xml.
-    dds='fast'일 때 FASTRTPS_DEFAULT_PROFILES_FILE/RMW_FASTRTPS_CONFIG_FILE 환경변수
-    XML 경로도 포함.
+    Include FASTRTPS_DEFAULT_PROFILES_FILE/RMW_FASTRTPS_CONFIG_FILE environment variable
+    XML paths when dds='fast'.
+    dds='cyclone' skips XML scanning (code-only mode).
     """
     package_path = Path(package_path).resolve()
     result: list[Path] = []
+
+    if dds == "cyclone":
+        return []  # Cyclone: no XML QoS profiles—code-only mode
 
     if package_path.is_dir():
         result.extend(
@@ -89,7 +93,7 @@ def find_all_xml_files(package_path: Path, dds: str = "fast") -> list[Path]:
 
 @dataclass
 class QosEntity:
-    """단일 QoS 엔티티 (publisher/subscriber/data_writer/data_reader)."""
+    """Single QoS entity (publisher/subscriber/data_writer/data_reader)."""
 
     source_path: Path
     entity_type: Literal["pub", "sub"]
@@ -97,16 +101,16 @@ class QosEntity:
     topic_name: str | None
     block_xml: str
     full_file_content: str
-    code_qos: dict[str, str] | None = None  # 코드에서 추출한 QoS (L1 최우선)
+    code_qos: dict[str, str] | None = None  # QoS extracted from code (L1 highest priority)
     entity_tag: str = ""  # publisher | subscriber | data_writer | data_reader
     is_default: bool = False
-    base_profile_name: str | None = None  # Fast DDS base_profile_name 상속
-    node_name: str = ""  # ros2 run 실행 단위(executable). 없으면 A,B,C.. fallback
+    base_profile_name: str | None = None  # Fast DDS base_profile_name inheritance
+    node_name: str = ""  # ros2 run execution unit (executable). fallback to A,B,C.. if missing
 
 
 @dataclass
 class XmlPair:
-    """pub/sub XML 쌍 (하위 호환용)."""
+    """pub/sub XML pair (for backward compatibility)."""
 
     pub_path: Path
     sub_path: Path
@@ -115,7 +119,7 @@ class XmlPair:
 
 
 def _profile_as_node_name(profile_name: str) -> str:
-    """profile_name이 executable 형식이면 그대로 사용 (cmd_vel_pub 등)."""
+    """Use profile_name as-is if executable format (e.g., cmd_vel_pub)."""
     if not profile_name or profile_name.startswith("/"):
         return ""
     s = profile_name.strip()
@@ -133,7 +137,7 @@ def scan_package(package_path: Path, dds: str = "fast") -> list[QosEntity]:
     source_to_exec = node_resolver.get_source_to_executable_map(package_path)
     entities: list[QosEntity] = []
 
-    # 1) XML 엔티티
+    # 1) XML entities
     for xml_path in find_all_xml_files(package_path, dds=dds):
         try:
             content = xml_path.read_text(encoding="utf-8", errors="ignore")
@@ -170,9 +174,9 @@ def scan_package(package_path: Path, dds: str = "fast") -> list[QosEntity]:
                 )
             )
 
-    # 2) 코드 엔티티 스캔 및 병합
-    # 동일 (topic, role)에 여러 XML 엔티티가 있을 수 있음 (1:N, N:1)
-    # → 모든 해당 XML 엔티티에 code_qos 적용
+    # 2) Code entity scan and merge
+    # Multiple XML entities can exist for same (topic, role) (1:N, N:1)
+    # → Apply code_qos to all corresponding XML entities
     code_entities = code_scanner.scan_code(package_path)
     topic_role_to_xml_list: dict[tuple[str, str], list[QosEntity]] = defaultdict(list)
     for e in entities:
@@ -202,14 +206,14 @@ def scan_package(package_path: Path, dds: str = "fast") -> list[QosEntity]:
                 )
             )
 
-    # 3) topic_extractor: Parameter/Constant 토픽 -> XML topic profile 매칭용 entity 보강
+    # 3) topic_extractor: Parameter/Constant topics -> entity enhancement for XML topic profile matching
     extracted = topic_extractor.extract_topics(package_path)
     for topic, info in extracted.items():
         norm = _normalize_topic(topic)
         if not norm:
             continue
         if info.get("source_type") == "Literal":
-            continue  # 이미 code_scanner에서 처리됨
+            continue  # Already handled in code_scanner
         has_pub = any(
             _normalize_topic(e.topic_name) == norm and e.entity_type == "pub"
             for e in entities
@@ -252,20 +256,22 @@ def scan_package(package_path: Path, dds: str = "fast") -> list[QosEntity]:
                 )
             )
 
-    # 4) 소스코드로 엔티티화 되지 않은 XML 프로파일 제외
-    # 유지: 코드/topic_extractor 전용, code와 merged, topic에 code 엔티티 있음
-    # 제외: topic_name 없음 또는 topic에 code 엔티티 없음
+    # 4) Exclude XML profiles that are not converted to entities by source code
+    # Keep: code/topic_extractor only, merged with code, code entity exists in topic
+    # Exclude: no topic_name or no code entity in topic
+    # If package has no code (topics_with_code empty set), keep all XML entities
     topics_with_code: set[str] = set()
     for e in entities:
         if e.code_qos and e.topic_name:
             topics_with_code.add(_normalize_topic(e.topic_name))
 
-    entities = [
-        e for e in entities
-        if not e.block_xml  # 코드/topic_extractor 전용 → 유지
-        or e.code_qos is not None  # code와 merged → 유지
-        or (e.topic_name and _normalize_topic(e.topic_name) in topics_with_code)
-    ]
+    if topics_with_code:
+        entities = [
+            e for e in entities
+            if not e.block_xml  # code/topic_extractor only → keep
+            or e.code_qos is not None  # merged with code → keep
+            or (e.topic_name and _normalize_topic(e.topic_name) in topics_with_code)
+        ]
 
     node_resolver.assign_fallback_nodes(entities)
     return entities
@@ -301,19 +307,19 @@ def _is_wildcard_base(base: str | None) -> bool:
 
 def build_entity_pairs(entities: list[QosEntity]) -> list[tuple[QosEntity, QosEntity]]:
     """
-    토픽 이름 기준으로 pub/sub 쌍을 생성합니다.
+    Create pub/sub pairs based on topic names.
 
-    1. 토픽 기반: 동일 토픽의 모든 Pub ↔ Sub 조합 (1:N, N:1 지원)
-    2. 익명 프로파일: topic_name 없을 때
-       - profile base 매칭: cmd_vel_pub ↔ cmd_vel_subscriber_profile
-       - wildcard(default/common/generic): 전체 조합
-       - 폴백: 전체 매칭(Broad Match)
+    1. Topic-based: All Pub ↔ Sub combinations of same topic (supports 1:N, N:1)
+    2. Anonymous profiles: when no topic_name
+       - profile base matching: cmd_vel_pub ↔ cmd_vel_subscriber_profile
+       - wildcard(default/common/generic): all combinations
+       - fallback: broad match
     """
     pubs = [e for e in entities if e.entity_type == "pub"]
     subs = [e for e in entities if e.entity_type == "sub"]
     pairs: list[tuple[QosEntity, QosEntity]] = []
 
-    # 1) 토픽 이름이 있는 엔티티: 토픽별 그룹화
+    # 1) Entities with topic names: group by topic
     pubs_by_topic: dict[str, list[QosEntity]] = defaultdict(list)
     subs_by_topic: dict[str, list[QosEntity]] = defaultdict(list)
 
@@ -331,21 +337,21 @@ def build_entity_pairs(entities: list[QosEntity]) -> list[tuple[QosEntity, QosEn
         if key is not None and _valid_topic_key(key):
             subs_by_topic[key].append(sub)
 
-    # 동일 토픽의 모든 Pub ↔ Sub 조합 (1:N, N:1) — 매칭만, synthetic 없음
+    # All Pub ↔ Sub combinations of same topic (1:N, N:1) — matching only, no synthetic
     for topic_key in pubs_by_topic:
         if topic_key in subs_by_topic:
             for pub in pubs_by_topic[topic_key]:
                 for sub in subs_by_topic[topic_key]:
                     pairs.append((pub, sub))
 
-    # 2) 익명 프로파일 (topic_name 없음)
+    # 2) Anonymous profiles (no topic_name)
     anon_pubs = [p for p in pubs if not p.topic_name]
     anon_subs = [s for s in subs if not s.topic_name]
 
     if not anon_pubs or not anon_subs:
         return pairs
 
-    # base 이름 추출
+    # Extract base name
     pub_bases = [(p, _profile_base_name(p.profile_name) or None) for p in anon_pubs]
     sub_bases = [(s, _profile_base_name(s.profile_name) or None) for s in anon_subs]
 
@@ -358,7 +364,7 @@ def build_entity_pairs(entities: list[QosEntity]) -> list[tuple[QosEntity, QosEn
             for sub in anon_subs:
                 pairs.append((pub, sub))
     else:
-        # base 매칭
+        # Base matching
         matched = False
         for pub, pub_base in pub_bases:
             for sub, sub_base in sub_bases:
@@ -376,8 +382,8 @@ def build_entity_pairs(entities: list[QosEntity]) -> list[tuple[QosEntity, QosEn
 
 def get_orphan_topics(entities: list[QosEntity]) -> list[tuple[str, Literal["pub", "sub"], QosEntity]]:
     """
-    Pub-only 또는 Sub-only 토픽 리스트. (topic_key, side, entity)
-    매칭 없이 표시용, 룰 검사 건너뜀.
+    Pub-only or Sub-only topic list. (topic_key, side, entity)
+    Display only without matching, skip rule checking.
     """
     pubs = [e for e in entities if e.entity_type == "pub"]
     subs = [e for e in entities if e.entity_type == "sub"]

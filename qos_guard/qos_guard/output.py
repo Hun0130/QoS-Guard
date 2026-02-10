@@ -4,7 +4,7 @@ Output module.
 
 Centralizes all terminal output (except CLI error/usage).
 Format and print check results, info, and warnings.
-노드별 버퍼 수집 후 알파벳 순 정렬, 노드 변경 시 한 줄 띄움.
+Collects per-node buffer, sorts alphabetically, adds line break on node change.
 """
 import re
 import shutil
@@ -19,7 +19,7 @@ def _topic_column_width() -> int:
         w = 80
     return max(20, int(w * 0.35))
 
-# 버퍼: (topic, node, "info"|"warning", payload) - 토픽별로 info → warning 순 출력
+# Buffer: (topic, node, "info"|"warning", payload) - output per topic: info → warning order
 _output_buffer: list[tuple[str, str, str, object]] = []
 
 # ────────── ANSI color codes ──────────
@@ -64,7 +64,7 @@ def format_warning_with_node(severity: str, side: str, msg: str, node: str) -> s
 
 
 def _topic_display(topic: str) -> str:
-    """토픽 표기: custom_topic_name 포함 시 *로 치환."""
+    """Topic display: replace custom_topic_name with *."""
     t = (topic or "").strip().strip("/") or "?"
     if "custom_topic_name" in t:
         # /controller_selector_custom_topic_name -> /controller_selector_*
@@ -73,19 +73,19 @@ def _topic_display(topic: str) -> str:
 
 
 def buffer_info(node: str, line: str, topic: str = "") -> None:
-    """버퍼에 info 라인 추가. topic으로 그룹핑 (토픽 → 경고 순 출력)."""
+    """Add info line to buffer. Grouped by topic (topic → warnings order)."""
     _output_buffer.append((topic or "", node or "", "info", line))
 
 
 def _normalize_qos_msg(msg: str) -> str:
-    """Invalid QoS: / QoS warning: → 줄바꿈 후 QoS Conflict: 로 변환."""
+    """Invalid QoS: / QoS warning: → convert to line break + QoS Conflict:."""
     msg = msg.replace("Invalid QoS:", "\nQoS Conflict:", 1)
     msg = msg.replace("QoS warning:", "\nQoS Conflict:", 1)
     return msg
 
 
 def _abbreviate_qos_msg(msg: str) -> str:
-    """경고 메시지 축약: Invalid QoS:/QoS warning:/QoS Conflict: 접두사 제거."""
+    """Abbreviate warning message: remove Invalid QoS:/QoS warning:/QoS Conflict: prefixes."""
     for prefix in ("Invalid QoS: ", "QoS warning: ", "QoS Conflict: "):
         if msg.startswith(prefix):
             return msg[len(prefix):].strip()
@@ -102,7 +102,7 @@ def buffer_warning(
     topic: str | None,
     msg: str,
 ) -> None:
-    """버퍼에 warning 추가. topic별로 info 바로 아래 출력."""
+    """Add warning to buffer. Output per topic: immediately below info."""
     pn = (pub_node or "").strip()
     full_msg = _abbreviate_qos_msg(msg)
     _output_buffer.append((topic or "", pn or "", "warning", (severity, side, full_msg)))
@@ -119,7 +119,7 @@ def buffer_qos_sources(
     pub_node: str = "",
     sub_node: str = "",
 ) -> None:
-    """print_qos_sources와 동일 내용을 버퍼에 추가."""
+    """Add same content as print_qos_sources to buffer."""
     line = _format_qos_sources_line(
         topic, pub_sum, sub_sum,
         pub_had_override, sub_had_override,
@@ -132,7 +132,7 @@ def buffer_qos_sources(
 def buffer_orphan_topic(
     topic: str, side: str, node_name: str = "", level: str = "L1"
 ) -> None:
-    """Pub-only/Sub-only 토픽 표기. Topic:[/X] Pub/Sub[node][level] 형식. custom_topic_name → *."""
+    """Pub-only/Sub-only topic display. Topic:[/X] Pub/Sub[node][level] format. custom_topic_name → *."""
     node = (node_name or "").strip()
     topic_norm = _topic_display(topic)
     role = "Pub" if (side or "").upper() == "PUB" else "Sub"
@@ -144,26 +144,26 @@ def buffer_orphan_topic(
 
 
 def flush_output_buffer() -> None:
-    """버퍼를 토픽별로 정렬 후 출력. 토픽 info → 해당 경고들 순."""
+    """Sort buffer by node and output. Node info → corresponding warnings order."""
     global _output_buffer
     if not _output_buffer:
         return
-    # 정렬: topic 오름차순, info 먼저 warning 나중 (토픽 하나 + 바로 아래 경고)
+    # Sort: node ascending, topic ascending, info first warning last (one node + warnings immediately below)
     type_order = {"info": 0, "warning": 1}
     sorted_items = sorted(
         _output_buffer,
-        key=lambda x: ((x[0] or "").lower(), type_order.get(x[2], 1), (x[1] or "").lower()),
+        key=lambda x: ((x[1] or "").lower(), (x[0] or "").lower(), type_order.get(x[2], 1)),
     )
     _output_buffer = []
-    prev_topic: str | None = None
     prev_node: str = ""
+    prev_topic: str | None = None
     for topic, node, line_type, payload in sorted_items:
         curr_topic = topic or ""
         curr_node = node or ""
-        if prev_topic is not None and curr_topic != prev_topic and curr_node != prev_node:
+        if prev_node != "" and curr_node != prev_node and curr_topic != prev_topic:
             print()
-        prev_topic = curr_topic
         prev_node = curr_node
+        prev_topic = curr_topic
         if line_type == "info":
             print(f"[INFO] {payload}")
         else:
@@ -172,13 +172,13 @@ def flush_output_buffer() -> None:
 
 
 def clear_output_buffer() -> None:
-    """버퍼 비우기."""
+    """Clear buffer."""
     global _output_buffer
     _output_buffer = []
 
 
 def print_info(msg: str, node: str = "") -> None:
-    """Print [INFO] message. node 있으면 [INFO] [node] 형식."""
+    """Print [INFO] message. If node exists, use [INFO] [node] format."""
     prefix = f"[INFO] [{node}] " if (node or "").strip() else "[INFO] "
     print(f"{prefix}{msg}")
 
@@ -226,7 +226,7 @@ def _format_qos_sources_line(
     pub_node: str = "",
     sub_node: str = "",
 ) -> str:
-    """QoS source 표시: Topic:[/X] Pub[node][L] <-> Sub[node][L]"""
+    """QoS source display: Topic:[/X] Pub[node][L] <-> Sub[node][L]"""
     def _format_side(sum_str: str, had_override: bool, entity_tag: str) -> str:
         short = _level_to_short(sum_str)
         if not had_override:
@@ -260,7 +260,7 @@ def print_qos_sources(
     pub_node: str = "",
     sub_node: str = "",
 ) -> None:
-    """Print QoS source levels for a pair. Override시 무시된 레벨(Lx→L2) 표시."""
+    """Print QoS source levels for a pair. Show ignored levels on override (Lx→L2)."""
     line = _format_qos_sources_line(
         topic, pub_sum, sub_sum,
         pub_had_override, sub_had_override,
@@ -297,7 +297,7 @@ def print_warnings(
 def print_orphan_topic(
     topic: str, side: str, node_name: str = ""
 ) -> None:
-    """Pub-only 또는 Sub-only 토픽 표시 (룰 검사 건너뜀)."""
+    """Pub-only or Sub-only topic display (rule check skipped)."""
     node_part = f" [{node_name}]" if (node_name or "").strip() else ""
     print_info(f"Topic:{topic}:{node_part} {side.upper()} only (rules skipped)")
 
@@ -316,7 +316,7 @@ def print_summary(
     functional_count: int,
     operational_count: int,
 ) -> None:
-    """출력 마지막에 요약 테이블 출력."""
+    """Print summary table at the end of output."""
     print()
     rows = [
         ("Package", package_name),

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-QoS-Guard 정적 분석 테스트용 전체 런치
+QoS-Guard static analysis test complete launch
 - Topic A: cmd_vel 1:1
 - Topic B: sensor_data 1:3 (1 pub, 3 subs)
 - Topic C: map N:1 (2 pubs, 1 sub)
-- Topic D: status 고립 (pub, sub 각각 연결 없음)
+- Topic D: status isolated (pub, sub each without connection)
 """
 from launch import LaunchDescription
 from launch_ros.actions import Node
@@ -72,7 +72,7 @@ def generate_launch_description():
         )
     )
 
-    # Topic D: /status 고립
+    # Topic D: /status isolated
     ld.add_action(
         Node(
             package="qos_test_pkg",

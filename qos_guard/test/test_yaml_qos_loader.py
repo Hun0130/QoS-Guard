@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for yaml_qos_loader - ② YAML 파라미터."""
+"""Tests for yaml_qos_loader - ② YAML parameters."""
 
 import tempfile
 from pathlib import Path
@@ -32,10 +32,10 @@ my_node:
 
 
 class TestLoadQosFromYaml:
-    """② YAML config/*.yaml 스캔."""
+    """② YAML: merge into existing QoS dictionary."""
 
     def test_loads_qos_from_yaml(self):
-        """config/*.yaml에서 reliability, durability, depth 추출."""
+        """Extract reliability, durability, depth from config/*.yaml."""
         with tempfile.TemporaryDirectory() as tmp:
             pkg = Path(tmp)
             (pkg / "config").mkdir()
@@ -47,7 +47,7 @@ class TestLoadQosFromYaml:
         assert result["default"].get("history_depth") == "10"
 
     def test_merge_yaml_qos_into(self):
-        """merge_yaml_qos_into: 빈 필드만 YAML로 보강."""
+        """merge_yaml_qos_into: supplement empty fields with YAML only."""
         qos = {"reliability": "", "durability": "TRANSIENT_LOCAL", "history_depth": "5"}
         yaml_p = {"default": {"reliability": "RELIABLE", "history_depth": "10"}}
         out = yaml_qos_loader.merge_yaml_qos_into(qos, yaml_p)

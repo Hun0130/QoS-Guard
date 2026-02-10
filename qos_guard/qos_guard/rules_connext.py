@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Fast DDS + ROS 2 Humble 전용 규칙 검사 모듈.
+RTI Connext DDS specific rule checking module.
 
-QoS 프로파일에 대해 단일/교차 규칙을 적용하여 위반 메시지를 반환합니다.
-이 규칙들은 Fast DDS 2.6.9 및 ROS 2 Humble 기준으로 작성되었습니다.
+Applies single/cross rules to QoS profiles and returns violation messages.
+These rules are based on RTI Connext DDS and ROS 2 QoS policies.
 """
 import math
 import re
 from dataclasses import dataclass
 from typing import Callable, List, Tuple
 
-from . import xml_parser_fastdds as xp
+from . import xml_parser_connext as xp
 
-# xml_parser_fastdds에서 재export
+# xml_parser_connext re-export
 deadline_enabled = xp.deadline_enabled
 deadline_period_ns = xp.deadline_period_ns
 lease_duration_ns = xp.lease_duration_ns
@@ -26,21 +26,21 @@ LIFESPAN_RE = xp.LIFESPAN_RE
 INF_SET = xp.INF_SET
 NON_VOLATILE = {"TRANSIENT_LOCAL", "TRANSIENT", "PERSISTENT"}
 
-# RMW 벤더별 max_samples_per_instance 기본값 (표 39용)
+# RMW vendor-specific max_samples_per_instance defaults (for Table 39)
 RMW_MPI_DEFAULTS = {"fast": "400", "cyclone": "-1", "connext": "400"}
 
 
 @dataclass
 class CheckContext:
-    """규칙 검사에 필요한 컨텍스트 정보."""
+    """Context information required for rule checking."""
 
     publish_period_ms: int
     rtt_ns: int
-    dds: str = "fast"
+    dds: str = "connext"
     ros_version: str = "humble"
 
 
-# ────────── 단일 프로파일 규칙 ──────────
+# ────────── Single profile rules ──────────
 def rule_lifespan_vs_deadline(xml, _q, _ctx):
     """Check lifespan vs deadline consistency."""
     dl_m = DEADLINE_RE.search(xml)
@@ -88,7 +88,7 @@ def _parse_mpi(mpi_txt: str) -> int | None:
 
 
 def rule_history_vs_max_per_instance(_xml, q, _ctx):
-    """[HIST.kind=KEEP_LAST] ∧ [HIST.depth > mpi] - 표 1."""
+    """[HIST.kind=KEEP_LAST] ∧ [HIST.depth > mpi] - Table 1."""
     hist_kind = q.get("history", "").strip().upper()
     depth_txt = q.get("history_depth", "").strip()
     mpi_txt = q.get("max_samples_per_instance", "").strip() or "0"
@@ -140,7 +140,7 @@ def rule_rdlife_autopurge_vs_durability(_xml, q, _ctx):
     """Check autopurge_disposed with durable QoS. [DURABL.kind≥TRANSIENT]∧[RDLIFE.autopurge_disposed=0]."""
     dur_kind = q.get("durability", "").strip().upper()
     auto_delay = q.get("autopurge_disposed_samples_delay", "").strip()
-    # 표: DURABL.kind ≥ TRANSIENT (TRANSIENT, PERSISTENT만, TRANSIENT_LOCAL 제외)
+    # Table: DURABL.kind ≥ TRANSIENT (TRANSIENT, PERSISTENT only, excluding TRANSIENT_LOCAL)
     if dur_kind in ("TRANSIENT", "PERSISTENT") and auto_delay == "0":
         return "Invalid QoS: DURABL≥TRANSIENT <-> autopurge_disposed=0"
     return None
@@ -308,9 +308,9 @@ def rule_keep_last_lifespan_overflow(xml, q, ctx):
     return None
 
 
-# ────────── Stage 3: 표 기준 (매칭/단일) ──────────
+# ────────── Stage 3: Table-based (Matching/Single) ──────────
 def _autopurge_disposed_gt_zero(q: dict) -> bool:
-    """RDLIFE.autopurge_disposed_samples_delay > 0 여부."""
+    """Check if RDLIFE.autopurge_disposed_samples_delay > 0."""
     val = (q.get("autopurge_disposed_samples_delay") or "").strip()
     if not val:
         return False
@@ -360,7 +360,7 @@ def rule_stage3_reliable_keep_last_depth(xml, q, ctx):
 
 
 def rule_stage3_reliable_keepall_mpi(xml, q, ctx):
-    """[RELIAB=RELIABLE] ∧ [HIST=KEEP_ALL] ∧ [mpi < ⌈RTT/PP⌉+1] - Functional (표: +1)."""
+    """[RELIAB=RELIABLE] ∧ [HIST=KEEP_ALL] ∧ [mpi < ⌈RTT/PP⌉+1] - Functional (Table: +1)."""
     if q.get("reliability", "").strip().upper() != "RELIABLE":
         return None
     if q.get("history", "").strip().upper() != "KEEP_ALL":
@@ -378,7 +378,7 @@ def rule_stage3_reliable_keepall_mpi(xml, q, ctx):
 
 
 def rule_stage3_reliable_lifespan(xml, q, ctx):
-    """[RELIAB=RELIABLE] ∧ [LFSPAN.duration < RTT×2] - Functional (표 31)."""
+    """[RELIAB=RELIABLE] ∧ [LFSPAN.duration < RTT×2] - Functional (Table 31)."""
     if q.get("reliability", "").strip().upper() != "RELIABLE":
         return None
     lifespan_sec_m = re.search(
@@ -481,7 +481,7 @@ def rule_stage3_autodispose_best_effort(_xml, q, _ctx):
 
 
 def rule_durable_keepall_mpi_default(_xml, q, ctx):
-    """[DURABL≥TRAN_LOCAL] ∧ [KEEP_ALL] ∧ [mpi=각 미들웨어 기본값] - 표 39."""
+    """[DURABL≥TRAN_LOCAL] ∧ [KEEP_ALL] ∧ [mpi=middleware default] - Table 39."""
     if q.get("durability", "").strip().upper() not in NON_VOLATILE:
         return None
     if q.get("history", "").strip().upper() != "KEEP_ALL":
@@ -491,13 +491,13 @@ def rule_durable_keepall_mpi_default(_xml, q, ctx):
     if mpi_txt != default_mpi:
         return None
     return (
-        f"Invalid QoS: DURABL≥TRANSIENT_LOCAL + KEEP_ALL + mpi={default_mpi}(기본값). "
+        f"Invalid QoS: DURABL≥TRANSIENT_LOCAL + KEEP_ALL + mpi={default_mpi}(default). "
         "Consider explicit mpi for durable+KEEP_ALL."
     )
 
 
 def rule_stage3_deadline_durable(xml, q, _ctx):
-    """[DEADLN.period > 0] ∧ [DURABL ≥ TRAN_LOCAL] - Operational (표 41)."""
+    """[DEADLN.period > 0] ∧ [DURABL ≥ TRAN_LOCAL] - Operational (Table 40)."""
     if not deadline_enabled(xml):
         return None
     if q.get("durability", "").strip().upper() not in NON_VOLATILE:
@@ -505,8 +505,8 @@ def rule_stage3_deadline_durable(xml, q, _ctx):
     return "QoS warning: DEADLN.period>0 <-> DURABL≥TRANSIENT_LOCAL"
 
 
-# ────────── 단일 엔티티: (rule_fn, severity, scope) scope: "pub"|"sub"|"both" ──────────
-# 표: Entity Scope에 따라 Pub/Sub 각자 검사
+# ────────── Single entity: (rule_fn, severity, scope) scope: "pub"|"sub"|"both" ──────────
+# Table: Check Pub/Sub separately according to Entity Scope
 ENTITY_RULES: List[Tuple[Callable, str, str]] = [
     # 1: HIST↔RESLIM
     (rule_history_vs_max_per_instance, "Structural", "both"),
@@ -564,14 +564,14 @@ ENTITY_RULES: List[Tuple[Callable, str, str]] = [
     (rule_stage3_exclusive_lease_short, "Operational", "sub"),
     # 38: RELIAB→WDLIFE
     (rule_stage3_autodispose_best_effort, "Functional", "pub"),
-    # 39: HIST→DURABL (mpi=미들웨어 기본값)
+    # 39: HIST→DURABL (mpi=middleware default)
     (rule_durable_keepall_mpi_default, "Operational", "pub"),
-    # 41: DURABL→DEADLN
+    # 40: DURABL→DEADLN
     (rule_stage3_deadline_durable, "Operational", "sub"),
 ]
 
 
-# ────────── Stage 2: 매칭된 엔티티 쌍 간 비교 (pub vs sub) ──────────
+# ────────── Stage 2: Comparison between matched entity pairs (pub vs sub) ──────────
 RELIABILITY_LEVEL = {"BEST_EFFORT": 0, "RELIABLE": 1}
 DURABILITY_LEVEL = {
     "VOLATILE": 0,
@@ -633,14 +633,14 @@ def rule_deadline_period_compat(pub_xml, sub_xml):
     if r_ns is None:
         return None
     if w_ns is None:
-        return "Invalid QoS: Writer.DEADLN.period <-> Reader.DEADLN.period (Writer 없음)"
+        return "Invalid QoS: Writer.DEADLN.period <-> Reader.DEADLN.period (Writer missing)"
     if r_ns != 0 and w_ns > r_ns:
         return "Invalid QoS: Writer.DEADLN.period <-> Reader.DEADLN.period (Writer>Reader)"
     return None
 
 
 def rule_nowriter_autodispose_zero(pub_q, sub_q):
-    """[W.autodispose=FALSE] ∧ [R.autopurge_nowriter=0] - Functional (표 26)."""
+    """[W.autodispose=FALSE] ∧ [R.autopurge_nowriter=0] - Functional (Table 26)."""
     auto_off = pub_q.get("autodispose", "").strip().upper() == "FALSE"
     sec_txt = (sub_q.get("nowriter_sec_r") or "").strip()
     nsec_txt = (sub_q.get("nowriter_nsec_r") or "").strip()
@@ -656,7 +656,7 @@ def rule_nowriter_autodispose_zero(pub_q, sub_q):
 
 
 def rule_nowriter_autodispose_inf(pub_q, sub_q):
-    """[W.autodispose=FALSE] ∧ [R.autopurge_nowriter=∞] - Operational (표 27)."""
+    """[W.autodispose=FALSE] ∧ [R.autopurge_nowriter=∞] - Operational (Table 27)."""
     auto_off = pub_q.get("autodispose", "").strip().upper() == "FALSE"
     sec_txt = sub_q.get("nowriter_sec_r", "")
     nsec_txt = sub_q.get("nowriter_nsec_r", "")
@@ -698,7 +698,7 @@ def rule_liveliness_incompatibility(pub_xml, sub_xml, pub_q, sub_q):
     return None
 
 
-# ────────── 매칭 검사 (Pub↔Sub): 표 18-27 ──────────
+# ────────── Matching checks (Pub↔Sub): Tables 18-27 ──────────
 CROSS_RULES_XML: List[Tuple[Callable, str]] = [
     (rule_partition_overlap, "Structural"),  # 18: PART↔PART
     (rule_deadline_period_compat, "Structural"),  # 21: DEADLN↔DEADLN
@@ -720,7 +720,7 @@ CROSS_RULES_FULL: List[Tuple[Callable, str]] = [
 def run_checks_single_entity(
     xml: str, q: dict, ctx: CheckContext, side: str
 ) -> List[Tuple[str, str, str]]:
-    """단일 엔티티 검사 (orphan PUB/SUB). Entity Scope에 따라 Pub/Sub 각자 적용."""
+    """Single entity check (orphan PUB/SUB). Apply Pub/Sub separately according to Entity Scope."""
     warnings: List[Tuple[str, str, str]] = []
     side_lower = side.lower()
     for rule_fn, severity, scope in ENTITY_RULES:
@@ -735,10 +735,10 @@ def run_checks_single_entity(
 def run_checks(
     pub_xml: str, sub_xml: str, pub_q: dict, sub_q: dict, ctx: CheckContext
 ) -> List[Tuple[str, str, str]]:
-    """단일 엔티티(Entity Scope) + 매칭(Pub↔Sub) 검사. (severity, side, msg) 반환."""
+    """Single entity (Entity Scope) + matching (Pub↔Sub) check. Return (severity, side, msg)."""
     warnings: List[Tuple[str, str, str]] = []
 
-    # 단일 엔티티: Entity Scope에 따라 Pub/Sub 각자 검사
+    # Single entity: Check Pub/Sub separately according to Entity Scope
     for side, (xml, prof) in (("PUB", (pub_xml, pub_q)), ("SUB", (sub_xml, sub_q))):
         side_lower = side.lower()
         for rule_fn, severity, scope in ENTITY_RULES:
@@ -748,7 +748,7 @@ def run_checks(
             if msg:
                 warnings.append((severity, side, msg))
 
-    # 매칭 검사 (Pub↔Sub)
+    # Matching checks (Pub↔Sub)
     for rule_fn, severity in CROSS_RULES_XML:
         msg = rule_fn(pub_xml, sub_xml)
         if msg:

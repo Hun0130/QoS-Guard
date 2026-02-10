@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Jazzy 스타일: data_writer/data_reader (DDS 표준 용어) -->
+<!-- Jazzy style: data_writer/data_reader (DDS standard terms) -->
 <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
     <profiles>
         <!-- Topic B: sensor_pub - Jazzy data_writer -->
@@ -24,7 +24,7 @@
             </qos>
         </data_writer>
 
-        <!-- Topic C: map publishers - Jazzy data_writer (2개 pub용) -->
+        <!-- Topic C: map publishers - Jazzy data_writer (for 2 pubs) -->
         <data_writer profile_name="map_datawriter_profile_1">
             <topic>
                 <name>/map</name>
@@ -63,7 +63,7 @@
             </qos>
         </data_writer>
 
-        <!-- Topic B: sensor subs - Jazzy data_reader (3개 서로 다른 QoS) -->
+        <!-- Topic B: sensor subs - Jazzy data_reader (3 different QoS) -->
         <data_reader profile_name="sensor_datareader_profile_1">
             <topic>
                 <name>/sensor_data</name>

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Fast DDS QoS 프로파일 XML 파서.
+Fast DDS QoS profile XML parser.
 
-eProsima Fast DDS (Fast RTPS) XML 스키마를 파싱합니다.
+Parses eProsima Fast DDS (Fast RTPS) XML schema.
 
-5단계 우선순위 (rmw_fastrtps 공식):
-  L1: Code (rclcpp::QoS non-DEFAULT) - 최우선
-  L2: <topic profile_name="/topic"> - 토픽 이름 자동 매칭
-  L3: <data_writer/reader profile_name="/topic"> - Jazzy 스타일 토픽 매칭
-  L4: <publisher/subscriber profile_name="..."> - Humble, 코드 명시 시
+5-level priority (rmw_fastrtps official):
+  L1: Code (rclcpp::QoS non-DEFAULT) - Highest priority
+  L2: <topic profile_name="/topic"> - Topic name auto-matching
+  L3: <data_writer/reader profile_name="/topic"> - Jazzy style topic matching
+  L4: <publisher/subscriber profile_name="..."> - Humble, when code-specified
   L5: is_default_profile="true" - Fallback
 """
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-# ────────── 출처 레벨 상수 ──────────
+# ────────── Source level constants ──────────
 LEVEL_CODE = "Level_1_Code"
 LEVEL_TOPIC = "Level_2_Topic"
 LEVEL_DATA_WRITER = "Level_3_DataWriter"
@@ -24,7 +24,7 @@ LEVEL_PUBLISHER = "Level_4_Publisher"
 LEVEL_SUBSCRIBER = "Level_4_Subscriber"
 LEVEL_DEFAULT = "Level_5_Default"
 
-# ────────── 엔티티 블록 타입 ──────────
+# ────────── Entity block types ──────────
 ENTITY_TAGS_PUB = ("publisher", "data_writer")
 ENTITY_TAGS_SUB = ("subscriber", "data_reader")
 ENTITY_TAGS_ALL = ENTITY_TAGS_PUB + ENTITY_TAGS_SUB + ("topic",)
@@ -32,17 +32,17 @@ ENTITY_TAGS_ALL = ENTITY_TAGS_PUB + ENTITY_TAGS_SUB + ("topic",)
 
 @dataclass
 class EntityBlock:
-    """파일 내 단일 프로파일 블록 (publisher, subscriber, data_writer, data_reader, topic)."""
+    """Single profile block in file (publisher, subscriber, data_writer, data_reader, topic)."""
 
     tag: str  # publisher | subscriber | data_writer | data_reader | topic
     profile_name: str
-    topic_name: str | None  # 엔티티: 인라인 <topic><name>, topic: profile_name
+    topic_name: str | None  # Entity: inline <topic><name>, topic: profile_name
     block_xml: str
     is_default: bool
-    base_profile_name: str | None = None  # Fast DDS base_profile_name 상속
+    base_profile_name: str | None = None  # Fast DDS base_profile_name inheritance
 
 
-# ────────── 프로파일 블록 추출 ──────────
+# ────────── Profile block extraction ──────────
 _PROFILE_TAGS = ("topic", "publisher", "subscriber", "data_writer", "data_reader")
 _TOPIC_LEVEL_KEYS = (
     "history", "history_depth", "max_samples", "max_instances", "max_samples_per_instance"
@@ -86,7 +86,7 @@ def _find_tag_blocks(xml: str, tag: str) -> List[Tuple[str, str, bool, str | Non
 
 
 def _extract_inline_topic_name(entity_xml: str) -> str | None:
-    """엔티티 내부 인라인 <topic> 블록에서 <name> 추출."""
+    """Extract <name> from inline <topic> block within entity."""
     topic_m = re.search(r"<\s*topic\s*>([\s\S]*?)<\s*/\s*topic\s*>", entity_xml, re.I)
     if not topic_m:
         return None
@@ -132,9 +132,9 @@ def _find_parent_block(
     tag: str,
     base_profile_name: str,
 ) -> Tuple[str, str, bool, str | None] | None:
-    """동일 태그에서 profile_name이 base_profile_name인 부모 블록 반환."""
+    """Return parent block where profile_name matches base_profile_name in same tag."""
     entity_tags = ENTITY_TAGS_PUB + ENTITY_TAGS_SUB
-    # publisher <-> data_writer, subscriber <-> data_reader 매핑
+    # publisher <-> data_writer, subscriber <-> data_reader mapping
     tag_to_check = [tag]
     if tag == "publisher":
         tag_to_check = ["publisher", "data_writer"]
@@ -157,8 +157,8 @@ def resolve_profile_for_block(
     _visited: set[str] | None = None,
 ) -> Tuple[Dict[str, str | list[str]], str, Dict[str, str], List[str]]:
     """
-    5단계 계층으로 단일 엔티티 블록 QoS 병합.
-    base_profile_name 상속 시 부모 QoS를 먼저 로드한 뒤 자식이 override.
+    Merge single entity block QoS in 5-level hierarchy.
+    For base_profile_name inheritance, load parent QoS first then child overrides.
 
     Returns
     -------
@@ -175,7 +175,7 @@ def resolve_profile_for_block(
     log_msgs: List[str] = []
 
     topic_name = block.topic_name
-    # Jazzy: data_writer profile_name="/cmd_vel" -> topic으로 사용
+    # Jazzy: data_writer profile_name="/cmd_vel" -> use as topic
     if block.tag in ("data_writer", "data_reader") and not topic_name and block.profile_name:
         if block.profile_name.startswith("/") or _normalize_topic_for_match(block.profile_name):
             topic_name = (
@@ -184,7 +184,7 @@ def resolve_profile_for_block(
                 else f"/{block.profile_name}"
             )
 
-    # base_profile_name 상속: 부모 QoS 먼저 병합 (순환 참조 방지)
+    # base_profile_name inheritance: merge parent QoS first (prevent circular reference)
     base_qos: Dict[str, str | list[str]] = {}
     visited = _visited if _visited is not None else set()
     if block.base_profile_name and block.base_profile_name not in visited:
@@ -216,7 +216,7 @@ def resolve_profile_for_block(
             if base_qos.get(k):
                 source_info[k] = LEVEL_DEFAULT
 
-    # L4 (publisher/subscriber) 또는 L3 (data_writer/reader)
+    # L4 (publisher/subscriber) or L3 (data_writer/reader)
     entity_qos = _parse_entity_qos(block.block_xml)
     entity_level = (
         LEVEL_PUBLISHER if block.tag == "publisher" else
@@ -269,7 +269,7 @@ def resolve_profile_for_block(
     return base_qos, block.block_xml, source_info, log_msgs
 
 
-# ────────── 태그 추출 패턴 ──────────
+# ────────── Tag extraction patterns ──────────
 TAG_PATTERNS = {
     "reliability": re.compile(
         r"<\s*reliability\s*>.*?<\s*kind\s*>(\w+)\s*</kind\s*>.*?</\s*reliability\s*>",
@@ -345,8 +345,8 @@ TAG_PATTERNS = {
     ),
 }
 
-# ────────── DEADLINE 헬퍼 ──────────
-# [^<]+: 숫자, DURATION_INFINITY, 4294967295 등 모두 캡처
+# ────────── DEADLINE helpers ──────────
+# [^<]+: capture numbers, DURATION_INFINITY, 4294967295, etc.
 DEADLINE_RE = re.compile(
     r"<\s*deadline\s*>[^<]*?<\s*period\s*>"
     r"(?:[^<]*?<\s*sec\s*>([^<]+)\s*</sec\s*>)?"
@@ -354,7 +354,7 @@ DEADLINE_RE = re.compile(
     re.I | re.S,
 )
 
-# ────────── LIVELINESS 헬퍼 ──────────
+# ────────── LIVELINESS helpers ──────────
 LEASE_RE = re.compile(
     r"<\s*liveliness\s*>.*?<\s*lease_duration\s*>"
     r"(?:[^<]*?<\s*sec\s*>([^<]+)\s*</sec\s*>)?"
@@ -369,13 +369,13 @@ ANNOUNCE_RE = re.compile(
     re.I | re.S,
 )
 
-# ────────── LIFESPAN 헬퍼 ──────────
+# ────────── LIFESPAN helpers ──────────
 LIFESPAN_RE = re.compile(
     r"<\s*lifespan\s*>.*?</\s*lifespan\s*>",
     re.I | re.S,
 )
 
-# ────────── partition 헬퍼 ──────────
+# ────────── partition helpers ──────────
 PART_ALL_RE = re.compile(
     r"<\s*partition\s*>.*?</\s*partition\s*>", re.I | re.S
 )
@@ -385,7 +385,7 @@ INF_SET = {"DURATION_INFINITY", "4294967295"}
 
 
 def parse_duration_field(txt: str | None) -> int | None:
-    """무한대(INF)이면 None, 아니면 정수 반환."""
+    """Return None if infinite (INF), otherwise return integer."""
     if not txt:
         return 0
     t = txt.strip().upper()
@@ -395,12 +395,12 @@ def parse_duration_field(txt: str | None) -> int | None:
 
 
 def is_inf(txt: str | None) -> bool:
-    """텍스트가 무한대 값을 나타내는지 판정."""
+    """Check if text represents infinite value."""
     return txt and txt.strip().upper() in INF_SET
 
 
 def deadline_enabled(xml: str) -> bool:
-    """DEADLINE이 설정되어 있는지 확인."""
+    """Check if DEADLINE is configured."""
     m = DEADLINE_RE.search(xml)
     if not m:
         return False
@@ -412,7 +412,9 @@ def deadline_enabled(xml: str) -> bool:
 
 
 def deadline_period_ns(xml: str) -> int | None:
-    """DEADLINE period를 ns 단위 정수로 반환. 미설정/무한대면 None."""
+    """Return DEADLINE period as ns integer. Return None if not set/infinite."""
+    if not xml or not isinstance(xml, str):
+        return None
     m = DEADLINE_RE.search(xml)
     if not m:
         return None
@@ -449,6 +451,8 @@ def announcement_period_ns(xml: str) -> int | None:
 
 def partition_list(xml: str) -> list[str]:
     """Extract partition name list from XML."""
+    if not xml or not isinstance(xml, str):
+        return [""]
     blk = PART_ALL_RE.search(xml)
     if not blk:
         return [""]
@@ -457,7 +461,7 @@ def partition_list(xml: str) -> list[str]:
 
 
 def parse_profile(xml: str) -> Dict[str, str | list[str]]:
-    """XML 문자열에서 QoS 프로파일을 파싱하여 딕셔너리로 반환합니다."""
+    """Parse QoS profile from XML string and return as dictionary."""
     out: Dict[str, str | list[str]] = {}
     for k, pat in TAG_PATTERNS.items():
         m = pat.search(xml)
@@ -467,7 +471,7 @@ def parse_profile(xml: str) -> Dict[str, str | list[str]]:
 
 
 def _parse_entity_qos(entity_xml: str) -> Dict[str, str | list[str]]:
-    """엔티티 블록에서 <qos> + 인라인 <topic> 병합 파싱."""
+    """Parse <qos> + inline <topic> merge from entity blocks."""
     qos_block = ""
     topic_m = re.search(r"<\s*topic\s*>([\s\S]*?)<\s*/\s*topic\s*>", entity_xml, re.I)
     qos_m = re.search(r"<\s*qos\s*>([\s\S]*?)<\s*/\s*qos\s*>", entity_xml, re.I)
@@ -479,14 +483,14 @@ def _parse_entity_qos(entity_xml: str) -> Dict[str, str | list[str]]:
 
 
 def _normalize_topic_for_match(name: str | None) -> str:
-    """토픽 매칭용 정규화: /cmd_vel, cmd_vel -> cmd_vel."""
+    """Normalization for topic matching: /cmd_vel, cmd_vel -> cmd_vel."""
     if not name:
         return ""
     return (name or "").strip().strip("/") or ""
 
 
 def _topic_matches(profile_name: str, topic_name: str | None) -> bool:
-    """Jazzy: profile_name이 토픽 이름과 일치하는지 (L3 자동 매칭)."""
+    """Jazzy: Check if profile_name matches topic name (L3 auto matching)."""
     if not topic_name:
         return False
     p = _normalize_topic_for_match(profile_name)
@@ -497,7 +501,7 @@ def _topic_matches(profile_name: str, topic_name: str | None) -> bool:
 
 
 def _topic_profile_matches(pname: str, topic_name: str | None) -> bool:
-    """L2 topic 프로파일이 topic_name과 매칭되는지."""
+    """Check if L2 topic profile matches topic_name."""
     if _topic_matches(pname, topic_name) or pname == topic_name:
         return True
     return pname == f"/{topic_name or ''}"
@@ -505,8 +509,8 @@ def _topic_profile_matches(pname: str, topic_name: str | None) -> bool:
 
 def get_topic_profile_qos(full_xml: str, topic_name: str | None) -> Dict[str, str | list[str]] | None:
     """
-    topic_name에 매칭되는 XML <topic profile_name="..."> 블록의 QoS 반환.
-    코드 전용 엔티티가 XML topic profile과 매칭될 때 L2 적용용.
+    Return QoS from XML <topic profile_name="..."> block matching topic_name.
+    Used for L2 application when code-only entities match XML topic profile.
     """
     if not topic_name:
         return None
@@ -528,7 +532,7 @@ def _merge_qos(
     source_info: Dict[str, str],
     keys: tuple[str, ...] | None = None,
 ) -> None:
-    """Overlay를 base에 병합. source_info에 출처 기록."""
+    """Merge overlay into base. Record source in source_info."""
     target_keys = keys or list(overlay.keys())
     for k in target_keys:
         v = overlay.get(k)
@@ -541,7 +545,7 @@ def resolve_profile(
     xml: str, role: str, dds: str = "fast"
 ) -> Tuple[Dict[str, str | list[str]], str, Dict[str, str], List[str]]:
     """
-    5단계 계층으로 QoS 병합. Full Override 적용.
+    Merge QoS with 5-level hierarchy. Apply Full Override.
 
     Returns
     -------
@@ -556,21 +560,21 @@ def resolve_profile(
     entity_tag = "data_writer" if role == "pub" else "data_reader"
     fallback_tag = "publisher" if role == "pub" else "subscriber"
 
-    # Entity 블록 선택: data_writer/reader 우선, 없으면 publisher/subscriber
+    # Entity block selection: prioritize data_writer/reader, otherwise publisher/subscriber
     entity_blocks = profiles.get(entity_tag) or profiles.get(fallback_tag)
     used_tag = entity_tag if profiles.get(entity_tag) else fallback_tag
 
     if not entity_blocks:
         return parse_profile(xml), xml, source_info, log_msgs
 
-    # 첫 블록 또는 default 선택
+    # Select first block or default
     profile_name, entity_xml, is_default_entity, _ = entity_blocks[0]
     if len(entity_blocks) > 1:
         default_entity = next((b for b in entity_blocks if b[2]), entity_blocks[0])
         profile_name, entity_xml, is_default_entity, _ = default_entity
 
     topic_name = _extract_inline_topic_name(entity_xml)
-    # Jazzy: data_writer profile_name="/cmd_vel" 형태면 topic으로 사용
+    # Jazzy: if data_writer profile_name="/cmd_vel" format, use as topic
     if used_tag in ("data_writer", "data_reader") and not topic_name and profile_name:
         if profile_name.startswith("/") or _normalize_topic_for_match(profile_name):
             topic_name = profile_name if profile_name.startswith("/") else f"/{profile_name}"
@@ -583,7 +587,7 @@ def resolve_profile(
             if base_qos.get(k):
                 source_info[k] = LEVEL_DEFAULT
 
-    # L4 (publisher/subscriber) 또는 L3 (data_writer/reader) entity
+    # L4 (publisher/subscriber) or L3 (data_writer/reader) entity
     entity_qos = _parse_entity_qos(entity_xml)
     entity_level = (
         LEVEL_PUBLISHER if used_tag == "publisher" else

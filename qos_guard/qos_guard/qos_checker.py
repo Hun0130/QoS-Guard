@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-QoS Guard - DDS QoS 프로파일 검증 도구.
+QoS Guard - DDS QoS profile verification tool.
 
-CLI 인자 파싱, XML 파싱, 규칙 검사, 출력을 각 모듈에 위임합니다.
+Delegates CLI argument parsing, XML parsing, rule checking, and output to respective modules.
 """
 import sys
 from pathlib import Path
@@ -10,12 +10,32 @@ from pathlib import Path
 from . import cli
 from . import output
 from . import package_scanner
-from . import rules_fastdds_humble as rules
 from . import xml_parser
 
 
+def _get_rules_module(dds: str, ros_version: str):
+    """Returns appropriate rule module based on DDS and ROS version."""
+    if dds == "fast":
+        if ros_version == "humble":
+            from . import rules_fast_humble as rules
+        elif ros_version == "jazzy":
+            from . import rules_fast_jazzy as rules
+        elif ros_version == "kilted":
+            from . import rules_fast_kilted as rules
+        else:
+            from . import rules_fast_humble as rules
+    elif dds == "connext":
+        from . import rules_connext as rules
+    elif dds == "cyclone":
+        from . import rules_cyclone as rules
+    else:
+        from . import rules_fast_humble as rules
+    
+    return rules
+
+
 def _is_code_non_system_default(code_qos: dict | None) -> bool:
-    """코드 QoS가 SYSTEM_DEFAULT가 아닌 명시적 값이 있는지 확인 (L1 적용 조건)."""
+    """Check if code QoS has explicit values other than SYSTEM_DEFAULT (L1 application condition)."""
     if not code_qos:
         return False
     for k, v in code_qos.items():
@@ -30,7 +50,7 @@ def _apply_code_qos_override(
     source_info: dict,
 ) -> tuple[dict, dict]:
     """
-    L1 (Code): 코드 QoS가 SYSTEM_DEFAULT가 아니면 Full Override 적용.
+    L1 (Code): Apply Full Override if code QoS is not SYSTEM_DEFAULT.
 
     Returns (merged_qos, updated_source_info).
     """
@@ -47,7 +67,7 @@ def _apply_code_qos_override(
 
 
 def _run_checks_for_pair(
-    pair_xml: tuple[str, str], ctx: rules.CheckContext
+    pair_xml: tuple[str, str], ctx, rules
 ) -> list[tuple[str, str, str]]:
     """Run checks for a single pub/sub pair (XML pair mode)."""
     pub_xml, sub_xml = pair_xml
@@ -82,7 +102,7 @@ _QOS_DEFAULTS = {
     "partition_list": [""],
 }
 
-# RMW 벤더별 ResourceLimits 기본값 (코드/XML 미지정 시 적용)
+# RMW vendor-specific ResourceLimits defaults (applied when code/XML not specified)
 # ref: Fast DDS default, Cyclone DDS default
 _RMW_RESOURCE_DEFAULTS = {
     "fast": {
@@ -105,15 +125,15 @@ _RMW_RESOURCE_DEFAULTS = {
 
 def _apply_qos_defaults(qos: dict, dds: str = "fast") -> dict:
     """
-    규칙 검사용 필수 키가 모두 존재하도록 기본값 병합.
+    Merge default values to ensure all required keys exist for rule checking.
 
-    ResourceLimits가 비어있으면 RMW 벤더 기본값 적용 (False Positive 방지).
+    Apply RMW vendor defaults if ResourceLimits are empty (prevent false positives).
     """
     out = dict(_QOS_DEFAULTS)
     out.update({k: v for k, v in qos.items() if k in out})
     if "partition_list" in qos:
         out["partition_list"] = qos["partition_list"]
-    # 비어있는 resource limit에 RMW 기본값 적용
+    # Apply RMW defaults to empty resource limits
     vendor = _RMW_RESOURCE_DEFAULTS.get(dds, _RMW_RESOURCE_DEFAULTS["fast"])
     for key in ("max_samples", "max_instances", "max_samples_per_instance"):
         if not (out.get(key) and str(out[key]).strip()):
@@ -122,7 +142,7 @@ def _apply_qos_defaults(qos: dict, dds: str = "fast") -> dict:
 
 
 def _code_qos_to_full_dict(code_qos: dict[str, str], dds: str = "fast") -> dict:
-    """코드 QoS를 규칙 검사용 전체 dict로 변환 (기본값 포함)."""
+    """Convert code QoS to full dict for rule checking (including defaults)."""
     out = dict(_QOS_DEFAULTS)
     for k, v in code_qos.items():
         if v and str(v).strip():
@@ -137,7 +157,7 @@ def _code_qos_to_full_dict(code_qos: dict[str, str], dds: str = "fast") -> dict:
 
 def _load_combined_package_xml(package_path: Path, dds: str = "fast") -> str:
     """Load and concatenate all XML files in package for profile resolution.
-    dds='fast'일 때 FASTRTPS_DEFAULT_PROFILES_FILE 등 환경변수 XML도 포함."""
+    Include environment variable XMLs like FASTRTPS_DEFAULT_PROFILES_FILE when dds='fast'."""
     xml_files = package_scanner.find_all_xml_files(package_path, dds=dds)
     parts: list[str] = []
     for p in xml_files:
@@ -153,7 +173,7 @@ def _resolve_single_entity(
     combined_xml: str,
     dds: str = "fast",
 ) -> tuple[dict, str]:
-    """단일 엔티티의 QoS와 entity_xml resolve. (q, entity_xml) 반환."""
+    """Resolve QoS and entity_xml for a single entity. Returns (q, entity_xml)."""
     if entity.block_xml:
         block = package_scanner.qos_entity_to_block(entity)
         q, entity_xml, _src, _logs = xml_parser.resolve_profile_for_block(
@@ -178,11 +198,11 @@ def _resolve_single_entity(
 def _run_checks_for_entity_pair(
     pub_entity: package_scanner.QosEntity,
     sub_entity: package_scanner.QosEntity,
-    ctx: rules.CheckContext,
+    ctx,
     combined_xml: str,
     info_seen_topics: set[str] | None = None,
 ) -> list[tuple[str, str, str]]:
-    """엔티티 쌍에 대해 검사를 실행합니다. (패키지 모드용). L1 Code > XML."""
+    """Run checks for entity pair (package mode). L1 Code > XML."""
     pub_src: dict = {}
     sub_src: dict = {}
 
@@ -194,7 +214,7 @@ def _run_checks_for_entity_pair(
             combined_xml, pub_block, dds=ctx.dds
         )
     else:
-        # 코드 전용: XML topic profile(L2) 매칭 시도 후 code_qos(L1) 적용
+        # Code only: Try XML topic profile (L2) matching then apply code_qos (L1)
         topic_profile_qos = xml_parser.get_topic_profile_qos(
             combined_xml, pub_entity.topic_name, dds=ctx.dds
         )
@@ -217,11 +237,11 @@ def _run_checks_for_entity_pair(
         sub_q = _apply_qos_defaults(base, dds=ctx.dds)
         sub_entity_xml = ""
 
-    # L1 (Code): SYSTEM_DEFAULT가 아니면 Full Override
+    # L1 (Code): Apply Full Override if not SYSTEM_DEFAULT
     pub_q, pub_src = _apply_code_qos_override(pub_q, pub_entity.code_qos, pub_src)
     sub_q, sub_src = _apply_code_qos_override(sub_q, sub_entity.code_qos, sub_src)
 
-    # 출처 시각화 (버퍼에 수집, 토픽별 1회만)
+    # Source visualization (collect in buffer, once per topic)
     pub_had_override = bool(pub_logs)
     sub_had_override = bool(sub_logs)
     _log_qos_sources(
@@ -232,6 +252,9 @@ def _run_checks_for_entity_pair(
 
     pub_q = _apply_qos_defaults(pub_q, dds=ctx.dds)
     sub_q = _apply_qos_defaults(sub_q, dds=ctx.dds)
+    
+    # Dynamically import rule modules
+    rules = _get_rules_module(ctx.dds, ctx.ros_version)
     return rules.run_checks(pub_entity_xml, sub_entity_xml, pub_q, sub_q, ctx)
 
 
@@ -244,7 +267,7 @@ def _log_qos_sources(
     sub_had_override: bool,
     info_seen_topics: set[str] | None = None,
 ) -> None:
-    """Output policy source (Level) to 버퍼. 토픽별 1회만."""
+    """Output policy source (Level) to buffer. Once per topic."""
     def _summarize(src: dict) -> str:
         if not src:
             return "Default"
@@ -268,7 +291,7 @@ def _log_qos_sources(
 
 
 def main() -> None:
-    """메인 진입점."""
+    """Main entry point."""
     args = cli.parse_args(sys.argv)
 
     # list mode: list all XML files in package
@@ -277,6 +300,9 @@ def main() -> None:
         output.print_list_mode(xml_files, args.package_path)
         return
 
+    # Dynamically import rule module
+    rules = _get_rules_module(args.dds, args.ros_version)
+
     ctx = rules.CheckContext(
         publish_period_ms=args.publish_period_ms,
         rtt_ns=args.rtt_ns,
@@ -284,11 +310,7 @@ def main() -> None:
         ros_version=args.ros_version,
     )
 
-    if args.dds != "fast" or args.ros_version != "humble":
-        output.print_warn(
-            f"Currently only fast+humble rules are implemented. "
-            f"Proceeding with dds={args.dds}, ros_version={args.ros_version}."
-        )
+    # Removed warning message for unsupported combinations (now all combinations supported)
 
     # Cyclone DDS: XML QoS profiles not supported -> reject XML pair mode
     if args.mode == "xml_pair" and args.dds == "cyclone":
@@ -304,7 +326,7 @@ def main() -> None:
     if args.mode == "xml_pair":
         pub_xml = cli.load_text(args.pub_path)
         sub_xml = cli.load_text(args.sub_path)
-        warnings = _run_checks_for_pair((pub_xml, sub_xml), ctx)
+        warnings = _run_checks_for_pair((pub_xml, sub_xml), ctx, rules)
         for sev, side, msg in warnings:
             all_warnings.append((sev, side, None, msg, "", ""))
         package_name = "-"
@@ -330,7 +352,7 @@ def main() -> None:
         for topic, side, entity in orphans:
             level = "L1" if not (entity.block_xml or "").strip() else "L2"
             output.buffer_orphan_topic(topic, side, entity.node_name or "", level=level)
-            # Stage 1: orphan에도 자기 자신만 검사하는 단일 룰 적용
+            # Stage 1: Apply single-entity rule to orphans as well
             entity_q, entity_xml = _resolve_single_entity(entity, combined_xml, dds=ctx.dds)
             orphan_warnings = rules.run_checks_single_entity(
                 entity_xml, entity_q, ctx, side.upper()

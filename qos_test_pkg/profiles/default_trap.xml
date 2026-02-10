@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Default Trap: is_default_profile="true" - 명시적 프로파일 없는 엔티티에 강제 적용 -->
+<!-- Default Trap: is_default_profile="true" - Force apply to entities without explicit profile -->
 <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
     <profiles>
         <participant profile_name="qos_test_default_participant" is_default_profile="true">
@@ -8,7 +8,7 @@
             </rtps>
         </participant>
 
-        <!-- Topic D: status_pub - 명시적 설정 없을 때 이 프로파일 강제 적용 -->
+        <!-- Topic D: status_pub - Force apply this profile when no explicit setting -->
         <publisher profile_name="status_publisher_default" is_default_profile="true">
             <topic>
                 <name>/status</name>
@@ -28,7 +28,7 @@
             </qos>
         </publisher>
 
-        <!-- 익명/제네릭 프로파일: base 매칭용 (default, common, generic) -->
+        <!-- Anonymous/generic profile: For base matching (default, common, generic) -->
         <subscriber profile_name="default" is_default_profile="true">
             <topic>
                 <name>generic_topic</name>

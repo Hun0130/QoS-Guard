@@ -96,7 +96,7 @@ class TestScanPackage:
         assert len(with_override) >= 1
 
     def test_map_topic_both_xml_entities_get_code_qos(self):
-        """1:N merge: /map에 2개 XML pub가 있으면 둘 다 code_qos 받아야 함."""
+        """1:N merge: if /map has 2 XML pubs, both should receive code_qos."""
         pkg = _qos_test_pkg_path()
         if not pkg.exists():
             pytest.skip("qos_test_pkg not found")

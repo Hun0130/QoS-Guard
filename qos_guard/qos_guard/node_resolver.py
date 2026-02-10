@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Executable(노드) 추론: 패키지 소스만으로 ros2 run 실행 단위별 엔티티 분류.
+Executable (node) inference: Classify entities by ros2 run execution unit using only package sources.
 
-CMake: add_executable, add_library, target_link_libraries 파싱
-Python: setup.py/setup.cfg entry_points console_scripts 파싱
+CMake: Parse add_executable, add_library, target_link_libraries
+Python: Parse setup.py/setup.cfg entry_points console_scripts
 """
 import configparser
 import re
@@ -12,7 +12,7 @@ from typing import Mapping
 
 
 def _norm_path(pkg: Path, raw: str) -> Path | None:
-    """CMake 소스 경로를 패키지 기준 절대경로로 정규화."""
+    """Normalize CMake source path to absolute path relative to package."""
     if not raw or not raw.strip():
         return None
     raw = raw.strip().strip('"')
@@ -82,7 +82,7 @@ def _resolve_cmake_source_to_exec(
     lib_sources: dict[str, set[Path]],
     links: dict[str, set[str]],
 ) -> dict[Path, str]:
-    """source path → executable name. exec + 링크된 lib의 소스 모두 포함."""
+    """source path → executable name. Include all sources from exec + linked libs."""
     pkg = pkg.resolve()
     result: dict[Path, str] = {}
     for exec_name, paths in exec_sources.items():
@@ -166,10 +166,10 @@ def _parse_python_entry_points(pkg: Path) -> dict[Path, str]:
 
 def get_source_to_executable_map(package_path: Path) -> Mapping[Path, str]:
     """
-    패키지 내 소스 경로 → executable 이름 매핑.
+    Package source path → executable name mapping.
 
-    CMake: add_executable, add_library, target_link_libraries 파싱
-    Python: setup.py/setup.cfg entry_points 파싱
+    CMake: Parse add_executable, add_library, target_link_libraries
+    Python: Parse setup.py/setup.cfg entry_points
     """
     pkg = Path(package_path).resolve()
     if not pkg.is_dir():
@@ -209,9 +209,9 @@ def assign_fallback_nodes(
     profile_attr: str = "profile_name",
 ) -> None:
     """
-    node_name이 비어있는 엔티티에 A, B, C... fallback 할당.
+    Assign A, B, C... fallback to entities with empty node_name.
 
-    entities를 in-place 수정. 그룹: (source_path, profile_name) 기준.
+    Modify entities in-place. Grouping: (source_path, profile_name) basis.
     """
     needs_fallback: list[tuple[int, str]] = []
     for i, e in enumerate(entities):
