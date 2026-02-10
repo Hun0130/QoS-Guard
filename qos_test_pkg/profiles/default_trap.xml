@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Default Trap: is_default_profile="true" - 명시적 프로파일 없는 엔티티에 강제 적용 -->
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <profiles>
+        <participant profile_name="qos_test_default_participant" is_default_profile="true">
+            <rtps>
+                <name>qos_test_default</name>
+            </rtps>
+        </participant>
+
+        <!-- Topic D: status_pub - 명시적 설정 없을 때 이 프로파일 강제 적용 -->
+        <publisher profile_name="status_publisher_default" is_default_profile="true">
+            <topic>
+                <name>/status</name>
+                <historyQos>
+                    <kind>KEEP_LAST</kind>
+                    <depth>5</depth>
+                </historyQos>
+                <resourceLimitsQos>
+                    <max_samples>50</max_samples>
+                    <max_instances>1</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resourceLimitsQos>
+            </topic>
+            <qos>
+                <durability><kind>VOLATILE</kind></durability>
+                <reliability><kind>BEST_EFFORT</kind></reliability>
+            </qos>
+        </publisher>
+
+        <!-- 익명/제네릭 프로파일: base 매칭용 (default, common, generic) -->
+        <subscriber profile_name="default" is_default_profile="true">
+            <topic>
+                <name>generic_topic</name>
+                <historyQos>
+                    <kind>KEEP_LAST</kind>
+                    <depth>10</depth>
+                </historyQos>
+                <resourceLimitsQos>
+                    <max_samples>100</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>20</max_samples_per_instance>
+                </resourceLimitsQos>
+            </topic>
+            <qos>
+                <durability><kind>VOLATILE</kind></durability>
+                <reliability><kind>BEST_EFFORT</kind></reliability>
+            </qos>
+        </subscriber>
+    </profiles>
+</dds>

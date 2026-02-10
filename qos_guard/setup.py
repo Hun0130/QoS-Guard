@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-        "qos_guard=qos_guard.qos_checker:main",
+            "qos_guard=qos_guard.qos_checker:main",
         ],
     },
 )
